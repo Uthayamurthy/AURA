@@ -1,4 +1,4 @@
-# Project Bright Sky
+# Project AURA
 
 ## Directory Structure
 
