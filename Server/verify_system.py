@@ -1,6 +1,3 @@
-# A test script to simulate the end-to-end flow of starting an attendance session,
-# broadcasting a beacon code, and submitting attendance as a student.
-
 import requests
 import time
 import json
@@ -23,48 +20,66 @@ def test_flow():
     print("Professor Logged in.")
 
     # ---------------------------------------------------------
-    # 2. Get Courses
+    # 2. Get Assignments (My Courses)
     # ---------------------------------------------------------
-    print("\n[2] Getting Courses...")
+    print("\n[2] Getting Teaching Assignments...")
     resp = requests.get(f"{BASE_URL}/professor/my-courses", headers=prof_headers)
-    courses = resp.json()
-    if not courses:
-        print("No courses found.")
+    assignments = resp.json()
+    if not assignments:
+        print("No assignments found.")
         return
-    course_id = courses[0]["id"]
-    print(f"Found Course: {courses[0]['name']} (ID: {course_id})")
+    
+    # Grab the first assignment details dynamically
+    target_assignment = assignments[0]
+    course_id = target_assignment["course_id"]
+    class_group_id = target_assignment["class_group_id"]
+    
+    # We need the Class Name for the MQTT Topic (e.g., "CSE A")
+    # Assuming the API returns the nested class_group object
+    class_group_name = target_assignment["class_group"]["name"] 
+    
+    print(f"Selected Assignment: {target_assignment['course']['name']} for {class_group_name}")
 
     # ---------------------------------------------------------
     # 3. Start Attendance
     # ---------------------------------------------------------
     print("\n[3] Starting Attendance...")
-    # Using Class Group ID 1 (CSC2 from seed)
     start_payload = {
         "course_id": course_id,
-        "class_group_id": 1,
+        "class_group_id": class_group_id,
         "duration_minutes": 5
     }
     resp = requests.post(f"{BASE_URL}/professor/attendance/start", json=start_payload, headers=prof_headers)
     if resp.status_code != 200:
         print(f"Start Failed: {resp.text}")
         return
-    print(f"Session Started. Check Server logs for MQTT broadcast.")
+    
+    session_data = resp.json()
+    print(f"Session Started (ID: {session_data['id']}).")
 
     # ---------------------------------------------------------
     # 4. Simulate Beacon (The Hardware)
     # ---------------------------------------------------------
-    print("\n[4] Simulating Beacon Broadcasting Code 'XYZ123'...")
-    # The real beacon would receive the command and then publish this:
-    publish.single("aura/classrooms/CSC2/active_code", payload="XYZ123", hostname=MQTT_HOST)
+    print(f"\n[4] Simulating Beacon Broadcasting in '{class_group_name}'...")
     
-    print("   ... Waiting 2 seconds for Server MQTT Listener to update DB ...")
+    # The Beacon generates a code and tells the server
+    beacon_code = "XYZ123"
+    
+    # TOPIC FORMAT: aura/classrooms/{CLASS_NAME}/active_code
+    # This must match what the server listens to in mqtt_listener.py
+    topic = f"aura/classrooms/{class_group_name}/active_code"
+    
+    print(f"   -> Publishing '{beacon_code}' to topic '{topic}'")
+    publish.single(topic, payload=beacon_code, hostname=MQTT_HOST)
+    
+    print("   ... Waiting 2 seconds for Server to update DB ...")
     time.sleep(2) 
 
     # ---------------------------------------------------------
     # 5. Student Login
     # ---------------------------------------------------------
     print("\n[5] Logging in as Student...")
-    # Login with the credentials from seed_test_data.py
+    # John Doe is in CSE A (from seed data)
     resp = requests.post(f"{BASE_URL}/login/access-token", data={"username": "john@student.com", "password": "student123"})
     if resp.status_code != 200:
         print(f"Student Login Failed: {resp.text}")
@@ -78,8 +93,8 @@ def test_flow():
     # ---------------------------------------------------------
     print("\n[6] Submitting Attendance...")
     submit_payload = {
-        "code": "XYZ123",
-        "device_uuid": "device-uuid-123",
+        "code": beacon_code, # Must match what we sent to MQTT
+        "device_uuid": "device-uuid-123", # matches seed data (or nullable)
         "rssi": -50.5
     }
     
@@ -94,7 +109,7 @@ def test_flow():
     if resp.status_code == 200:
         print("SUCCESS: Attendance Marked!")
     else:
-        print(f"FAILURE: {resp.status_code}")
+        print(f"FAILURE: {resp.status_code} - {resp.text}")
 
 if __name__ == "__main__":
     test_flow()
