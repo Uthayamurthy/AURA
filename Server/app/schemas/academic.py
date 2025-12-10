@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional, List
+from datetime import time
 
 # ClassGroup
 class ClassGroupBase(BaseModel):
@@ -58,5 +59,18 @@ class TimeTableCreate(TimeTableBase):
 class TimeTable(TimeTableBase):
     id: int
     assignment: Optional[TeachingAssignment] = None
+    class Config:
+        from_attributes = True
+
+class BellScheduleBase(BaseModel):
+    slot_number: int
+    start_time: time
+    end_time: time
+
+class BellScheduleCreate(BellScheduleBase):
+    pass
+
+class BellSchedule(BellScheduleBase):
+    id: int
     class Config:
         from_attributes = True

@@ -9,36 +9,43 @@ from app.core import mqtt
 
 router = APIRouter()
 
-@router.get("/my-courses", response_model=List[schemas.academic.Course])
+@router.get("/my-courses", response_model=List[schemas.academic.TeachingAssignment])
 def read_my_courses(
     db: Session = Depends(deps.get_db),
     current_prof: models.Professor = Depends(deps.get_current_active_professor),
 ):
-    return current_prof.courses
+    return current_prof.assignments
 
 @router.get("/my-timetable", response_model=List[schemas.academic.TimeTable])
 def read_my_timetable(
     db: Session = Depends(deps.get_db),
     current_prof: models.Professor = Depends(deps.get_current_active_professor),
 ):
-    # Get all timetables for this prof's courses
-    timetables = db.query(models.TimeTable).join(models.Course).filter(models.Course.professor_id == current_prof.id).all()
+    # Get all timetables where the assignment -> professor is me
+    timetables = db.query(models.TimeTable).join(models.TeachingAssignment).filter(
+        models.TeachingAssignment.professor_id == current_prof.id
+    ).all()
     return timetables
 
 @router.post("/attendance/start", response_model=schemas.attendance.AttendanceSession)
 def start_attendance(
     *,
     db: Session = Depends(deps.get_db),
-    session_in: schemas.attendance.AttendanceSessionCreate,
+    session_in: schemas.attendance.AttendanceSessionCreate, # expects course_id, class_group_id
     current_prof: models.Professor = Depends(deps.get_current_active_professor),
 ):
-    # 1. Verify Course ownership
-    course = db.query(models.Course).filter(models.Course.id == session_in.course_id).first()
-    if not course or course.professor_id != current_prof.id:
-        raise HTTPException(status_code=403, detail="You do not teach this course")
+    # 1. Verify Teaching Assignment exists for this Prof + Course + Class
+    assignment = db.query(models.TeachingAssignment).filter(
+        models.TeachingAssignment.professor_id == current_prof.id,
+        models.TeachingAssignment.course_id == session_in.course_id,
+        models.TeachingAssignment.class_group_id == session_in.class_group_id
+    ).first()
+    
+    if not assignment:
+        raise HTTPException(status_code=403, detail="You are not assigned to teach this course to this class.")
         
-    # 2. Get ClassGroup to determine Classroom ID for Beacon
-    class_group = db.query(models.ClassGroup).filter(models.ClassGroup.id == session_in.class_group_id).first()
+    # 2. Get ClassGroup to determine Classroom ID for Beacon (needed for MQTT)
+    class_group = assignment.class_group # loaded via relationship
     if not class_group:
          raise HTTPException(status_code=404, detail="Class Group not found")
 
@@ -47,8 +54,7 @@ def start_attendance(
     end_time = datetime.now(timezone.utc) + timedelta(minutes=duration_min)
     
     db_session = models.AttendanceSession(
-        course_id=session_in.course_id,
-        class_group_id=session_in.class_group_id,
+        assignment_id=assignment.id, # Link to Assignment now!
         start_time=datetime.now(timezone.utc),
         end_time=end_time,
         is_active=True
@@ -58,16 +64,14 @@ def start_attendance(
     db.refresh(db_session)
     
     # 4. Trigger Beacon via MQTT
-    # Assuming ClassGroup.name (e.g. "CSC2") is the identifier used in Beacon Controller config
     try:
         mqtt.send_beacon_command(
             command="start_session",
-            classroom_id=class_group.name,
+            classroom_id=class_group.name, # Using Class Name as Room ID e.g. "CSE A"
             duration_minutes=duration_min,
             session_id=db_session.id
         )
     except Exception as e:
-        # MQTT Failed! Undo the DB change so we don't have a "fake" active session
         db.delete(db_session)
         db.commit()
         raise HTTPException(status_code=500, detail=f"Failed to start beacon: {str(e)}")
@@ -84,16 +88,16 @@ def stop_attendance(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
         
-    # Verify ownership via course
-    course = db.query(models.Course).filter(models.Course.id == session.course_id).first()
-    if course.professor_id != current_prof.id:
+    # Verify ownership via assignment -> professor
+    if session.assignment.professor_id != current_prof.id:
         raise HTTPException(status_code=403, detail="Not authorized")
 
     session.is_active = False
-    session.end_time = datetime.now(timezone.utc) # Update end time to now
+    session.end_time = datetime.now(timezone.utc)
     db.commit()
     
-    class_group = db.query(models.ClassGroup).filter(models.ClassGroup.id == session.class_group_id).first()
+    # Stop Beacon
+    class_group = session.assignment.class_group
     if class_group:
          mqtt.send_beacon_command(
             command="stop_session",
@@ -107,10 +111,11 @@ def read_attendance_history(
     db: Session = Depends(deps.get_db),
     current_prof: models.Professor = Depends(deps.get_current_active_professor),
 ):
-    # Return sessions for courses taught by this prof
-    sessions = db.query(models.AttendanceSession).join(models.Course).filter(models.Course.professor_id == current_prof.id).order_by(models.AttendanceSession.start_time.desc()).all()
+    # Return sessions for assignments taught by this prof
+    sessions = db.query(models.AttendanceSession).join(models.TeachingAssignment).filter(
+        models.TeachingAssignment.professor_id == current_prof.id
+    ).order_by(models.AttendanceSession.start_time.desc()).all()
     
-    # Populate student_count (computed field, not in DB directly usually, but we can count the relationship)
     for session in sessions:
         session.student_count = len(session.records)
         
@@ -126,9 +131,7 @@ def read_session_details(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
         
-    # Verify ownership
-    course = db.query(models.Course).filter(models.Course.id == session.course_id).first()
-    if course.professor_id != current_prof.id:
+    if session.assignment.professor_id != current_prof.id:
          raise HTTPException(status_code=403, detail="Not authorized")
     
     session.student_count = len(session.records)
