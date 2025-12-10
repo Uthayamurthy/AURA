@@ -6,6 +6,7 @@ class UserBase(BaseModel):
     email: Optional[EmailStr] = None
     is_active: Optional[bool] = True
 
+# --- Professor ---
 class ProfessorBase(UserBase):
     name: Optional[str] = None
     department: Optional[str] = None
@@ -15,15 +16,18 @@ class ProfessorCreate(ProfessorBase):
     password: str
     id: int # 6 Digit ID
 
-class ProfessorUpdate(ProfessorBase):
-    password: Optional[str] = None
+class ProfessorUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    department: Optional[str] = None
+    password: Optional[str] = None # Allow updating password
 
 class Professor(ProfessorBase):
     id: int
     class Config:
         from_attributes = True
 
-# Admin Schema (Simpler)
+# --- Admin ---
 class AdminBase(BaseModel):
     username: str
 
@@ -35,7 +39,7 @@ class Admin(AdminBase):
     class Config:
         from_attributes = True
 
-# Student Schema
+# --- Student ---
 class StudentBase(UserBase):
     name: str
     department: Optional[str] = None
@@ -48,9 +52,12 @@ class StudentCreate(StudentBase):
     digital_id: int # 7 Digit ID
     email: EmailStr
 
-class StudentUpdate(StudentBase):
-    email: Optional[EmailStr] = None
+class StudentUpdate(BaseModel):
     name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    device_id: Optional[str] = None
+    class_group_id: Optional[int] = None
 
 class Student(StudentBase):
     id: int

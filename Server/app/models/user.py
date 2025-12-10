@@ -18,7 +18,8 @@ class Professor(Base):
     department = Column(String)
     password_hash = Column(String)
     
-    courses = relationship("Course", back_populates="professor")
+    # Relationship to TeachingAssignment
+    assignments = relationship("TeachingAssignment", back_populates="professor")
 
 class Student(Base):
     __tablename__ = "students"
@@ -28,7 +29,7 @@ class Student(Base):
     name = Column(String)
     email = Column(String, unique=True, index=True)
     password_hash = Column(String)
-    device_id = Column(String, nullable=True) # UUID
+    device_id = Column(String, nullable=True) # UUID (Nullable as requested)
     department = Column(String)
     year = Column(Integer)
     
