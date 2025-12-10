@@ -15,8 +15,14 @@ class AttendanceSession(AttendanceSessionBase):
     start_time: datetime
     end_time: Optional[datetime] = None
     is_active: bool
+    student_count: Optional[int] = 0 # Added for Statistics
+
     class Config:
         from_attributes = True
+
+class AttendanceSessionDetails(AttendanceSession):
+    attendees: List['AttendanceRecord'] = []
+
 
 class AttendanceRecord(BaseModel):
     id: int

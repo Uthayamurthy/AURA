@@ -86,7 +86,7 @@ These are the accounts created by the seed script.
 
 | Role      | Username / Email    | Password     | Device ID (if applicable) |
 |-----------|---------------------|--------------|---------------------------|
-| Admin     | admin               | admin123     | N/A                       |
+| Admin     | admin               | admin        | N/A                       |
 | Professor | prof@aura.com       | pass         | N/A                       |
 | Student   | john@student.com    | student123   | device-uuid-123           |
 

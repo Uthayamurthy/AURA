@@ -109,4 +109,28 @@ def read_attendance_history(
 ):
     # Return sessions for courses taught by this prof
     sessions = db.query(models.AttendanceSession).join(models.Course).filter(models.Course.professor_id == current_prof.id).order_by(models.AttendanceSession.start_time.desc()).all()
+    
+    # Populate student_count (computed field, not in DB directly usually, but we can count the relationship)
+    for session in sessions:
+        session.student_count = len(session.records)
+        
     return sessions
+
+@router.get("/attendance/session/{session_id}", response_model=schemas.attendance.AttendanceSessionDetails)
+def read_session_details(
+    session_id: int,
+    db: Session = Depends(deps.get_db),
+    current_prof: models.Professor = Depends(deps.get_current_active_professor),
+):
+    session = db.query(models.AttendanceSession).filter(models.AttendanceSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+        
+    # Verify ownership
+    course = db.query(models.Course).filter(models.Course.id == session.course_id).first()
+    if course.professor_id != current_prof.id:
+         raise HTTPException(status_code=403, detail="Not authorized")
+    
+    session.student_count = len(session.records)
+    session.attendees = session.records
+    return session

@@ -1,4 +1,6 @@
-from typing import List
+from typing import List, Any
+from datetime import datetime, timedelta
+from sqlalchemy import func, case
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -7,6 +9,70 @@ from app.api import deps
 from app.core import security
 
 router = APIRouter()
+
+@router.get("/stats", response_model=schemas.admin_stats.DashboardStats)
+def read_stats(
+    db: Session = Depends(deps.get_db),
+    current_admin: models.Admin = Depends(deps.get_current_active_admin),
+):
+    # 1. Counts
+    total_students = db.query(models.Student).count()
+    total_profs = db.query(models.Professor).count()
+    total_courses = db.query(models.Course).count()
+    total_classes = db.query(models.ClassGroup).count()
+
+    # 2. Active Sessions
+    active_sessions = db.query(models.AttendanceSession).filter(models.AttendanceSession.is_active == True).count()
+
+    # 3. Today's Attendance
+    today = datetime.now().date()
+    # Query for sessions started today
+    todays_sessions_subquery = db.query(models.AttendanceSession.id).filter(func.date(models.AttendanceSession.start_time) == today).subquery()
+    
+    # Count present and total for today
+    # Note: Case sensitive status check, assuming "PRESENT"
+    present_count = db.query(models.AttendanceRecord).filter(
+        models.AttendanceRecord.session_id.in_(todays_sessions_subquery),
+        models.AttendanceRecord.status == "PRESENT"
+    ).count()
+    
+    total_records_today = db.query(models.AttendanceRecord).filter(
+        models.AttendanceRecord.session_id.in_(todays_sessions_subquery)
+    ).count()
+    
+    todays_rate = 0.0
+    if total_records_today > 0:
+        todays_rate = (present_count / total_records_today) * 100
+
+    # 4. Weekly Trend (Last 7 days including today)
+    seven_days_ago = today - timedelta(days=6)
+    
+    daily_stats = db.query(
+        func.date(models.AttendanceSession.start_time).label("date"),
+        func.count(models.AttendanceRecord.id).label("total"),
+        func.sum(case((models.AttendanceRecord.status == "PRESENT", 1), else_=0)).label("present")
+    ).join(models.AttendanceSession)\
+    .filter(func.date(models.AttendanceSession.start_time) >= seven_days_ago)\
+    .group_by(func.date(models.AttendanceSession.start_time))\
+    .order_by(func.date(models.AttendanceSession.start_time)).all()
+    
+    weekly_trend = []
+    
+    for day_stat in daily_stats:
+        rate = 0.0
+        if day_stat.total > 0:
+            rate = (day_stat.present / day_stat.total) * 100
+        weekly_trend.append({"date": day_stat.date, "attendance_rate": rate})
+
+    return {
+        "total_students": total_students,
+        "total_professors": total_profs,
+        "total_courses": total_courses,
+        "total_classes": total_classes,
+        "active_sessions": active_sessions,
+        "todays_attendance_rate": todays_rate,
+        "weekly_trend": weekly_trend
+    }
 
 # --- Professors ---
 @router.post("/professors", response_model=schemas.user.Professor)
