@@ -1,7 +1,9 @@
 from typing import List, Any
 from datetime import datetime, timedelta
-from sqlalchemy import func, case, and_
-from fastapi import APIRouter, Depends, HTTPException
+import csv
+import codecs
+from sqlalchemy import func, case
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -16,16 +18,12 @@ def read_stats(
     db: Session = Depends(deps.get_db),
     current_admin: models.Admin = Depends(deps.get_current_active_admin),
 ):
-    # 1. Counts
     total_students = db.query(models.Student).count()
     total_profs = db.query(models.Professor).count()
-    total_courses = db.query(models.Course).count() # Generic Courses
+    total_courses = db.query(models.Course).count()
     total_classes = db.query(models.ClassGroup).count()
-
-    # 2. Active Sessions
     active_sessions = db.query(models.AttendanceSession).filter(models.AttendanceSession.is_active == True).count()
 
-    # 3. Today's Attendance
     today = datetime.now().date()
     todays_sessions_subquery = db.query(models.AttendanceSession.id).filter(func.date(models.AttendanceSession.start_time) == today).subquery()
     
@@ -42,7 +40,6 @@ def read_stats(
     if total_records_today > 0:
         todays_rate = (present_count / total_records_today) * 100
 
-    # 4. Weekly Trend
     seven_days_ago = today - timedelta(days=6)
     daily_stats = db.query(
         func.date(models.AttendanceSession.start_time).label("date"),
@@ -70,7 +67,17 @@ def read_stats(
         "weekly_trend": weekly_trend
     }
 
-# --- Professors ---
+# --- Professors Management ---
+
+@router.get("/professors", response_model=List[schemas.user.Professor])
+def read_professors(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(deps.get_db),
+    current_admin: models.Admin = Depends(deps.get_current_active_admin),
+):
+    return db.query(models.Professor).offset(skip).limit(limit).all()
+
 @router.post("/professors", response_model=schemas.user.Professor)
 def create_professor(
     *,
@@ -80,11 +87,11 @@ def create_professor(
 ):
     prof = db.query(models.Professor).filter(models.Professor.email == professor_in.email).first()
     if prof:
-        raise HTTPException(status_code=400, detail="Professor with this email already exists.")
+        raise HTTPException(status_code=400, detail="Email already exists.")
     
     prof_id = db.query(models.Professor).filter(models.Professor.id == professor_in.id).first()
     if prof_id:
-        raise HTTPException(status_code=400, detail="Professor ID already exists.")
+        raise HTTPException(status_code=400, detail="ID already exists.")
         
     db_prof = models.Professor(
         id=professor_in.id,
@@ -98,16 +105,104 @@ def create_professor(
     db.refresh(db_prof)
     return db_prof
 
-@router.get("/professors", response_model=List[schemas.user.Professor])
-def read_professors(
-    skip: int = 0,
-    limit: int = 100,
+@router.put("/professors/{prof_id}", response_model=schemas.user.Professor)
+def update_professor(
+    prof_id: int,
+    professor_in: schemas.user.ProfessorUpdate,
     db: Session = Depends(deps.get_db),
     current_admin: models.Admin = Depends(deps.get_current_active_admin),
 ):
-    return db.query(models.Professor).offset(skip).limit(limit).all()
+    prof = db.query(models.Professor).filter(models.Professor.id == prof_id).first()
+    if not prof:
+        raise HTTPException(status_code=404, detail="Professor not found")
+        
+    if professor_in.email:
+        prof.email = professor_in.email
+    if professor_in.name:
+        prof.name = professor_in.name
+    if professor_in.department:
+        prof.department = professor_in.department
+    if professor_in.password:
+        prof.password_hash = security.get_password_hash(professor_in.password)
+        
+    db.commit()
+    db.refresh(prof)
+    return prof
 
-# --- Students ---
+@router.delete("/professors/{prof_id}")
+def delete_professor(
+    prof_id: int,
+    db: Session = Depends(deps.get_db),
+    current_admin: models.Admin = Depends(deps.get_current_active_admin),
+):
+    prof = db.query(models.Professor).filter(models.Professor.id == prof_id).first()
+    if not prof:
+        raise HTTPException(status_code=404, detail="Professor not found")
+    db.delete(prof)
+    db.commit()
+    return {"status": "success"}
+
+@router.post("/professors/bulk_upload")
+def upload_professors(
+    file: UploadFile = File(...),
+    db: Session = Depends(deps.get_db),
+    current_admin: models.Admin = Depends(deps.get_current_active_admin),
+):
+    """
+    Expects CSV with columns: id, name, email, department, password
+    """
+    csvReader = csv.reader(codecs.iterdecode(file.file, 'utf-8'))
+    header = next(csvReader) # Skip header
+    
+    count = 0
+    errors = []
+    
+    for row in csvReader:
+        if len(row) < 5:
+            continue
+        try:
+            p_id = int(row[0])
+            name = row[1]
+            email = row[2]
+            dept = row[3]
+            pwd = row[4]
+            
+            # Check exist
+            if db.query(models.Professor).filter((models.Professor.id == p_id) | (models.Professor.email == email)).first():
+                errors.append(f"Skipped {email}: Already exists")
+                continue
+                
+            db_prof = models.Professor(
+                id=p_id,
+                name=name,
+                email=email,
+                department=dept,
+                password_hash=security.get_password_hash(pwd)
+            )
+            db.add(db_prof)
+            count += 1
+        except Exception as e:
+            errors.append(f"Error row {row}: {str(e)}")
+            
+    db.commit()
+    return {"added": count, "errors": errors}
+
+
+# --- Students Management ---
+
+@router.get("/students", response_model=List[schemas.user.Student])
+def read_students(
+    skip: int = 0,
+    limit: int = 100,
+    class_group_id: int = None,
+    db: Session = Depends(deps.get_db),
+    current_admin: models.Admin = Depends(deps.get_current_active_admin),
+):
+    query = db.query(models.Student)
+    if class_group_id:
+        query = query.filter(models.Student.class_group_id == class_group_id)
+    return query.offset(skip).limit(limit).all()
+
 @router.post("/students", response_model=schemas.user.Student)
 def create_student(
     *,
@@ -127,27 +222,112 @@ def create_student(
         department=student_in.department,
         year=student_in.year,
         class_group_id=student_in.class_group_id,
-        # device_id is nullable now, defaults to None
+        password_hash=security.get_password_hash("student123") # Default password if manual creation doesn't specify? Or we can take it from schema if added.
     )
+    # Note: Using default password for manual creation for now, or you can add password to StudentCreate schema
     db.add(db_student)
     db.commit()
     db.refresh(db_student)
     return db_student
 
-@router.get("/students", response_model=List[schemas.user.Student])
-def read_students(
-    skip: int = 0,
-    limit: int = 100,
-    class_group_id: int = None,
+@router.put("/students/{student_id}", response_model=schemas.user.Student)
+def update_student(
+    student_id: int,
+    student_in: schemas.user.StudentUpdate,
     db: Session = Depends(deps.get_db),
     current_admin: models.Admin = Depends(deps.get_current_active_admin),
 ):
-    query = db.query(models.Student)
-    if class_group_id:
-        query = query.filter(models.Student.class_group_id == class_group_id)
-    return query.offset(skip).limit(limit).all()
+    student = db.query(models.Student).filter(models.Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+        
+    if student_in.name: student.name = student_in.name
+    if student_in.email: student.email = student_in.email
+    if student_in.class_group_id: student.class_group_id = student_in.class_group_id
+    if student_in.password:
+        student.password_hash = security.get_password_hash(student_in.password)
+    # Allow resetting device_id (useful if student changes phone)
+    if student_in.device_id == "": # Empty string to clear
+        student.device_id = None
+        
+    db.commit()
+    db.refresh(student)
+    return student
 
-# --- Classes ---
+@router.delete("/students/{student_id}")
+def delete_student(
+    student_id: int,
+    db: Session = Depends(deps.get_db),
+    current_admin: models.Admin = Depends(deps.get_current_active_admin),
+):
+    student = db.query(models.Student).filter(models.Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    db.delete(student)
+    db.commit()
+    return {"status": "success"}
+
+@router.post("/students/bulk_upload")
+def upload_students(
+    file: UploadFile = File(...),
+    db: Session = Depends(deps.get_db),
+    current_admin: models.Admin = Depends(deps.get_current_active_admin),
+):
+    """
+    Expects CSV: id (13 digit), digital_id (7 digit), name, email, year, department, class_group_name, password
+    """
+    csvReader = csv.reader(codecs.iterdecode(file.file, 'utf-8'))
+    header = next(csvReader) 
+    
+    count = 0
+    errors = []
+    
+    # Cache class groups to avoid repeated DB lookups
+    class_map = {cg.name: cg.id for cg in db.query(models.ClassGroup).all()}
+    
+    for row in csvReader:
+        if len(row) < 8:
+            continue
+        try:
+            s_id = int(row[0])
+            d_id = int(row[1])
+            name = row[2]
+            email = row[3]
+            year = int(row[4])
+            dept = row[5]
+            cg_name = row[6]
+            pwd = row[7]
+            
+            # Resolve Class Group
+            cg_id = class_map.get(cg_name)
+            if not cg_id:
+                errors.append(f"Skipped {name}: Class '{cg_name}' not found")
+                continue
+
+            if db.query(models.Student).filter(models.Student.id == s_id).first():
+                errors.append(f"Skipped {s_id}: Already exists")
+                continue
+                
+            db_student = models.Student(
+                id=s_id,
+                digital_id=d_id,
+                name=name,
+                email=email,
+                year=year,
+                department=dept,
+                class_group_id=cg_id,
+                password_hash=security.get_password_hash(pwd),
+                device_id=None
+            )
+            db.add(db_student)
+            count += 1
+        except Exception as e:
+            errors.append(f"Error row {row}: {str(e)}")
+            
+    db.commit()
+    return {"added": count, "errors": errors}
+
+# --- Classes & Courses (Keep existing read/create endpoints) ---
 @router.post("/classes", response_model=schemas.academic.ClassGroup)
 def create_class_group(
     *,
@@ -170,7 +350,6 @@ def read_classes(
 ):
     return db.query(models.ClassGroup).offset(skip).limit(limit).all()
 
-# --- Courses (Definitions) ---
 @router.post("/courses", response_model=schemas.academic.Course)
 def create_course(
     *,
@@ -178,11 +357,9 @@ def create_course(
     course_in: schemas.academic.CourseCreate,
     current_admin: models.Admin = Depends(deps.get_current_active_admin),
 ):
-    # Check if code exists
     existing = db.query(models.Course).filter(models.Course.code == course_in.code).first()
     if existing:
         raise HTTPException(status_code=400, detail="Course code already exists")
-        
     db_course = models.Course(**course_in.dict())
     db.add(db_course)
     db.commit()
@@ -198,7 +375,6 @@ def read_courses(
 ):
     return db.query(models.Course).offset(skip).limit(limit).all()
 
-# --- Teaching Assignments ---
 @router.post("/assignments", response_model=schemas.academic.TeachingAssignment)
 def create_assignment(
     *,
@@ -206,15 +382,12 @@ def create_assignment(
     assign_in: schemas.academic.TeachingAssignmentCreate,
     current_admin: models.Admin = Depends(deps.get_current_active_admin),
 ):
-    # Check if duplicate assignment exists
     exists = db.query(models.TeachingAssignment).filter(
         models.TeachingAssignment.course_id == assign_in.course_id,
         models.TeachingAssignment.class_group_id == assign_in.class_group_id,
         models.TeachingAssignment.professor_id == assign_in.professor_id
     ).first()
-    
-    if exists:
-        return exists # Return existing if essentially same
+    if exists: return exists
 
     db_assign = models.TeachingAssignment(**assign_in.dict())
     db.add(db_assign)
@@ -233,7 +406,6 @@ def read_assignments(
         query = query.filter(models.TeachingAssignment.class_group_id == class_group_id)
     return query.all()
 
-# --- Bell Schedule ---
 @router.get("/bell-schedule", response_model=List[schemas.academic.BellSchedule])
 def read_bell_schedule(
     db: Session = Depends(deps.get_db),
@@ -248,8 +420,6 @@ def update_bell_schedule(
     schedule_in: List[schemas.academic.BellScheduleCreate],
     current_admin: models.Admin = Depends(deps.get_current_active_admin),
 ):
-    # Simplest approach: Delete all and re-insert, or update matching slots.
-    # We'll update matching slots for safety.
     ret = []
     for slot_data in schedule_in:
         db_slot = db.query(models.BellSchedule).filter(models.BellSchedule.slot_number == slot_data.slot_number).first()
@@ -264,15 +434,12 @@ def update_bell_schedule(
         ret.append(db_slot)
     return ret
 
-# --- Timetable (Grid Logic) ---
 @router.get("/timetable/{class_group_id}", response_model=List[schemas.academic.TimeTable])
 def read_timetable_grid(
     class_group_id: int,
     db: Session = Depends(deps.get_db),
     current_admin: models.Admin = Depends(deps.get_current_active_admin),
 ):
-    # Return all timetable entries for this class
-    # We join Assignment to filter by class_group_id
     entries = db.query(models.TimeTable).join(models.TeachingAssignment).filter(
         models.TeachingAssignment.class_group_id == class_group_id
     ).all()
@@ -282,18 +449,13 @@ def read_timetable_grid(
 def update_timetable_slot(
     *,
     db: Session = Depends(deps.get_db),
-    slot_in: schemas.academic.TimeTableCreate, # Contains assignment_id, day, slot
+    slot_in: schemas.academic.TimeTableCreate,
     current_admin: models.Admin = Depends(deps.get_current_active_admin),
 ):
-    # 1. Verify Assignment exists
     assign = db.query(models.TeachingAssignment).filter(models.TeachingAssignment.id == slot_in.assignment_id).first()
     if not assign:
         raise HTTPException(status_code=404, detail="Assignment not found")
 
-    # 2. Check if this class already has something at this slot
-    # We need to find if there is an existing TimeTable entry for this ClassGroup + Day + Slot
-    # BUT TimeTable table only has assignment_id. We need to check the ClassGroup of the *existing* assignment.
-    
     existing_entry = db.query(models.TimeTable).join(models.TeachingAssignment).filter(
         models.TeachingAssignment.class_group_id == assign.class_group_id,
         models.TimeTable.day_of_week == slot_in.day_of_week,
@@ -301,13 +463,11 @@ def update_timetable_slot(
     ).first()
 
     if existing_entry:
-        # Update existing
         existing_entry.assignment_id = slot_in.assignment_id
         db.commit()
         db.refresh(existing_entry)
         return existing_entry
     else:
-        # Create new
         new_entry = models.TimeTable(**slot_in.dict())
         db.add(new_entry)
         db.commit()
