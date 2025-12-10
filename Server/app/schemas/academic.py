@@ -25,6 +25,11 @@ class CourseBase(BaseModel):
 class CourseCreate(CourseBase):
     pass
 
+class CourseUpdate(BaseModel):
+    code: Optional[str] = None
+    name: Optional[str] = None
+    department: Optional[str] = None
+
 class Course(CourseBase):
     id: int
     class Config:
@@ -62,6 +67,7 @@ class TimeTable(TimeTableBase):
     class Config:
         from_attributes = True
 
+# Bell Schedule
 class BellScheduleBase(BaseModel):
     slot_number: int
     start_time: time
