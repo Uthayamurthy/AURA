@@ -40,6 +40,8 @@ class TeachingAssignment(Base):
     professor_id = Column(Integer, ForeignKey("professors.id"))
     class_group_id = Column(Integer, ForeignKey("class_groups.id"))
 
+    default_classroom = Column(String, nullable=True)
+
     course = relationship("Course", back_populates="assignments")
     professor = relationship("Professor", back_populates="assignments")
     class_group = relationship("ClassGroup", back_populates="assignments")

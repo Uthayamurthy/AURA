@@ -64,10 +64,12 @@ def start_attendance(
     db.refresh(db_session)
     
     # 4. Trigger Beacon via MQTT
+    composite_classroom_id = f"{class_group.name}_{session_in.room_number}"
+
     try:
         mqtt.send_beacon_command(
             command="start_session",
-            classroom_id=class_group.name, # Using Class Name as Room ID e.g. "CSE A"
+            classroom_id=composite_classroom_id,
             duration_minutes=duration_min,
             session_id=db_session.id
         )

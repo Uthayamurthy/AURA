@@ -4,7 +4,7 @@ import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Play, Users, Loader2 } from 'lucide-react';
+import { Play, Users, Loader2, MapPin } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -24,6 +24,7 @@ interface TeachingAssignment {
     id: number;
     course_id: number;
     class_group_id: number;
+    default_classroom?: string;
     course: Course;
     class_group: ClassGroup;
 }
@@ -94,11 +95,14 @@ export default function Home() {
         const assignment = assignments.find(a => a.id.toString() === selectedAssignmentId);
         if (!assignment) return;
 
+        const roomToSend = assignment.default_classroom || "49";
+
         try {
             const res = await api.post('/professor/attendance/start', {
                 course_id: assignment.course_id,
                 class_group_id: assignment.class_group_id,
-                duration_minutes: parseInt(duration)
+                duration_minutes: parseInt(duration),
+                room_number: roomToSend
             });
             // Optimistic update (Code will be null initially, Polling will fix it)
             setActiveSession({ ...res.data, assignment: assignment }); 
@@ -183,6 +187,9 @@ export default function Home() {
                                 <div className="flex items-center gap-1">
                                     <Users className="h-4 w-4" />
                                     <span>Class Group: {assign.class_group.name}</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-blue-600 font-medium">
+                                    <span> Room: LH{assign.default_classroom || "N/A"}</span>
                                 </div>
                             </div>
                             <Button 

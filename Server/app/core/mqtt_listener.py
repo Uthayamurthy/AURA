@@ -19,31 +19,35 @@ def on_connect(client, userdata, flags, rc, properties=None):
         print(f"Failed to connect to MQTT broker, return code {rc}")
 
 def on_message(client, userdata, msg):
-    """
-    Callback when a message is received.
-    """
     try:
         payload_code = msg.payload.decode("utf-8")
         topic = msg.topic
         
-        # Topic: aura/classrooms/{classroom_id}/active_code
+        # Match topic: aura/classrooms/{Composite_ID}/active_code
         match = re.search(r"aura/classrooms/(.*?)/active_code", topic)
         if not match:
-            print(f"Ignoring topic format: {topic}")
             return
             
-        beacon_classroom_id_str = match.group(1) 
+        beacon_classroom_id_str = match.group(1) # e.g., "CSE A_49" or "AURA_CSE A_49"
         
-        # Strip prefix if present (e.g. "AURA_CSE A" -> "CSE A")
-        # But our topic is likely just "CSE A" based on config.
-        classroom_name = beacon_classroom_id_str.replace("AURA_", "")
+        # 1. Clean up prefix if exists
+        clean_id = beacon_classroom_id_str.replace("AURA_", "") # "CSE A_49"
         
-        print(f"Received code '{payload_code}' for classroom '{classroom_name}'")
+        # 2. Extract Class Name by removing the Room Number suffix
+        # We split by the LAST underscore to separate Class from Room
+        if "_" in clean_id:
+            classroom_name, room_number = clean_id.rsplit("_", 1)
+        else:
+            # Fallback if no room number provided
+            classroom_name = clean_id
+
+        # Now classroom_name is "CSE A", which matches your DB!
+        print(f"Received code '{payload_code}' for Class '{classroom_name}' in Room '{room_number}'")
         
         update_active_code(classroom_name, payload_code)
         
     except Exception as e:
-        print(f"Error processing MQTT message: {e}")
+        print(f"Error: {e}")
 
 def update_active_code(classroom_name: str, code: str):
     """

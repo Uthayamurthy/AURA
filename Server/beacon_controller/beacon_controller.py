@@ -28,8 +28,8 @@ def load_config(config_path='config.json'):
 # --- Session Worker Function (runs in a separate thread) ---
 def session_worker(classroom_id, duration_seconds, config, client, stop_event):
     """
-    Manages a single attendance session, generating and publishing codes
-    in a loop until duration is over or a stop signal is received.
+    Manages a session. Generates custom codes: <DEPT><ROOM><RANDOM>
+    Example: CSE49128392
     """
     print(f"[Session {classroom_id}]: Starting for {duration_seconds} seconds.")
     
@@ -37,36 +37,37 @@ def session_worker(classroom_id, duration_seconds, config, client, stop_event):
     beacon_topic = classroom_config['beacon_topic']
     classroom_topic = classroom_config['classroom_topic']
     
+    # Get Static Data from Config (Default to '000' if missing to prevent crash)
+    dept_code = classroom_config.get('dept_code', 'UNK') 
+    room_code = classroom_config.get('room_code', '00')
+    
     end_time = time.time() + duration_seconds
     
-    # The main loop for the session
     while time.time() < end_time and not stop_event.is_set():
-        # 1. Generate a new 6-character random code
-        new_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        # 1. Generate just the random numeric part (6 digits)
+        random_part = ''.join(random.choices(string.digits, k=6))
         
-        # 2. Publish to the beacon
-        beacon_payload = json.dumps({"command": "broadcast", "code": new_code})
+        # 2. Construct the full payload
+        full_code = f"{dept_code}{room_code}{random_part}"
+        
+        # 3. Publish to the beacon (It just needs the raw string now)
+        beacon_payload = json.dumps({"command": "broadcast", "code": full_code})
         client.publish(beacon_topic, beacon_payload, qos=1)
         
-        # 3. Publish to the server-side classroom topic
-        client.publish(classroom_topic, new_code, qos=1, retain=True)
+        # 4. Publish to the server (This is what the backend verifies against)
+        client.publish(classroom_topic, full_code, qos=1, retain=True)
         
-        print(f"[Session {classroom_id}]: Published new code '{new_code}'.")
+        print(f"[Session {classroom_id}]: Published new code '{full_code}'.")
         
-        # Wait 30 seconds, but check for the stop signal every second
+        # Wait 30 seconds
         stop_event.wait(30)
 
-    # --- Cleanup after the loop ends ---
+    # --- Cleanup ---
     print(f"[Session {classroom_id}]: Session finished. Sending stop command.")
-    
-    # Tell the beacon to stop broadcasting
     stop_payload = json.dumps({"command": "stop"})
     client.publish(beacon_topic, stop_payload, qos=1)
-    
-    # Clear the retained message on the server topic
     client.publish(classroom_topic, "", qos=1, retain=True)
 
-    # Remove self from the active sessions dictionary (thread-safe)
     with session_lock:
         if classroom_id in active_sessions:
             del active_sessions[classroom_id]

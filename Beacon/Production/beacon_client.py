@@ -7,71 +7,66 @@ import btmgmt
 
 MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost") 
 MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
-ROOM_ID = os.getenv("ROOM_ID", "CSE A") # This will change depending on the class
+ROOM_ID = os.getenv("ROOM_ID", "CSELH49") # This will change depending on the class
 
 COMMAND_TOPIC = f"aura/beacons/AURA_{ROOM_ID}/commands"
 
 class Beacon:
-    def __init__(self, uuid, max_payload_length=23, debug=False):
-        self.uuid = uuid
-        self.max_payload_length = max_payload_length
+    def __init__(self, debug=False):
         self.debug = debug
-        self.data_buffer = '' # Save Data Temporarily till Broadcast
+        self.data_buffer = '' 
+
+    def setup(self):
+        '''
+        Ensures the Bluetooth Controller is Powered ON and LE is enabled.
+        '''
+        self.debug_msg('Setting up Bluetooth Controller...')
+        
+        # 1. Power On the Controller
+        # equivalent to: sudo btmgmt power on
+        resp_power = btmgmt.command_str('power', 'on')
+        self.debug_msg(f'Power On Response: {resp_power}')
+        
+        # 2. Enable Low Energy
+        # equivalent to: sudo btmgmt le on
+        resp_le = btmgmt.command_str('le', 'on')
+        self.debug_msg(f'LE On Response: {resp_le}')
     
     def debug_msg(self, msg):
-        '''
-        Prints msg only if debug is enabled !
-        '''
         if self.debug:
             print(f"[Beacon] {msg}")
 
+    def hexify(self, data):
+        '''Converts string to hex'''
+        return ''.join('{:02x}'.format(ord(c)) for c in data)
+
     def broadcast(self):
         '''
-        Broadcasts the data in buffer after prepending the length, uuid type and uuid of the broadcast.
+        Broadcasts whatever is in data_buffer as a Manufacturer Specific Advertisement.
+        buffer should ALREADY contain: Length + Type + CompanyID + Data
         '''
         self.debug_msg('Starting Broadcast ...')
-        length = len(self.data_buffer)//2 # Length in Bytes (Every two character in hex takes up a byte !!)
-        payload = f'{length:02x}{self.data_buffer}' # Prepend the Length to payload
-        self.debug_msg(f'Payload : {payload}\nLength: {length} Bytes')
         
-        # Using the library's command_str method
-        response = btmgmt.command_str('add-adv', '-u', 'FEAA', '-d', payload,  '-g',  '1')
+        # We use -d for "data" and pass the raw hex string directly
+        # -g 1 sets it to "General Discoverable"
+        payload = self.data_buffer
+        
+        if not payload:
+            print("Error: Buffer empty, nothing to broadcast.")
+            return
+
+        # Note: We removed '-u FEAA' because we are not using a Service UUID anymore
+        response = btmgmt.command_str('add-adv', '-d', payload, '-g', '1')
         self.debug_msg(f'Broadcast Response : {response}')
 
     def stop_broadcast(self):
-        '''
-        Clears Broadcast and resets the data buffer
-        '''
         self.debug_msg('Stopping Broadcast ...')
         self.data_buffer = ''
         response = btmgmt.command_str('clr-adv')
-        self.debug_msg(f'Stop Broadcast Response : {response}')
+        self.debug_msg(f'Stop Response : {response}')
 
-    def add_data(self, data, type='unicode-text'):
-        '''
-        Adds data to the data buffer based on type.
-        '''
-        supported_types = ('unicode-text', 'raw')
 
-        if type not in supported_types:
-            raise ValueError(f'Unsupported Type: Type must be : {supported_types}')
-
-        if self.max_payload_length > ((len(self.data_buffer) + len(data)) // 2):
-            if type == 'unicode-text':
-                self.data_buffer += self.hexify(data)
-            elif type == 'raw':
-                self.data_buffer += data
-            self.debug_msg(f'Added Data ! Buffer is now : {self.data_buffer}')
-        else:
-            raise ValueError(f'Payload Length Exceeded Set Limit : {self.max_payload_length}')
-
-    def hexify(self, data):
-        '''
-        Converts the data to unicode and then hex.
-        '''
-        return ''.join('{:02x}'.format(ord(c)) for c in data)
-
-beacon = Beacon('feaa', debug=True)
+beacon = Beacon(debug=True)
 
 def on_connect(client, userdata, flags, rc, properties=None):
     if rc == 0:
@@ -87,32 +82,53 @@ def on_message(client, userdata, msg):
         command = payload.get("command")
         
         if command == "broadcast":
-            code = payload.get("code")
+            code = payload.get("code") # Expecting "CSE49123456"
             if code:
-                print(f"Received Broadcast Command for Code: {code}")
+                print(f"Received Code: {code}")
                 
-                # 1. Stop any existing broadcast to be clean
+                # 1. Clean slate
                 beacon.stop_broadcast()
                 
-                # 2. Add Eddystone Common Header (from your example.py)
-                beacon.add_data('16feaa', 'raw') 
+                # 2. Build the Packet
+                # We want the air packet to look like:
+                # [Length 1B] [Type 1B] [Company ID 2B] [Data NB]
                 
-                # 3. Add the Code
-                beacon.add_data(code, 'unicode-text')
+                # Convert our string code to Hex
+                code_hex = beacon.hexify(code)
                 
-                # 4. Blast it!
+                # Constants
+                # Type 0xFF = Manufacturer Specific Data
+                # Company ID 0xFFFF = Reserved for Testing (Perfect for us)
+                header_type = "ff"
+                company_id = "ffff"
+                
+                # Calculate Length
+                # Length = 1 byte (Type) + 2 bytes (Company ID) + N bytes (Code)
+                # Note: The 'Length' byte itself is NOT included in the count usually in this specific raw format context, 
+                # but standard BLE packets usually structure it as [Len, Type, Value].
+                # btmgmt 'add-adv -d' expects the full sequence.
+                
+                data_len_int = 1 + 2 + len(code)
+                len_hex = f'{data_len_int:02x}'
+                
+                # Construct Full Payload
+                # Example: 0effffff435345...
+                full_payload = len_hex + header_type + company_id + code_hex
+                
+                # 3. Load and Fire
+                beacon.data_buffer = full_payload
                 beacon.broadcast()
             else:
-                print("Received broadcast command but no code provided.")
+                print("Broadcast command missing 'code'")
                 
         elif command == "stop":
-            print("Received Stop Command")
+            print("Stopping...")
             beacon.stop_broadcast()
             
     except json.JSONDecodeError:
-        print(f"Invalid JSON received: {msg.payload}")
+        print(f"Invalid JSON: {msg.payload}")
     except Exception as e:
-        print(f"Error processing message: {e}")
+        print(f"Error: {e}")
 
 # --- Main Execution ---
 if __name__ == "__main__":
@@ -123,6 +139,12 @@ if __name__ == "__main__":
 
     print(f"--- AURA Beacon Client ({ROOM_ID}) ---")
     
+    try:
+        beacon.setup()
+    except Exception as e:
+        print(f"⚠️ Setup failed: {e}")
+        # We continue anyway, as it might already be on.
+
     # Ensure clean state on startup
     try:
         beacon.stop_broadcast()

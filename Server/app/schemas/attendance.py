@@ -29,6 +29,7 @@ class AttendanceSessionCreate(BaseModel):
     course_id: int
     class_group_id: int
     duration_minutes: Optional[int] = 5
+    room_number: str
 
 class AttendanceSession(AttendanceSessionBase):
     id: int

@@ -91,7 +91,8 @@ def seed_data():
     
     if not assign1:
         assign1 = models.TeachingAssignment(
-            course_id=course_algo.id, professor_id=prof1.id, class_group_id=cg_a.id
+            course_id=course_algo.id, professor_id=prof1.id, class_group_id=cg_a.id,
+            default_classroom="49",
         )
         db.add(assign1)
         print("Assigned Smith -> DS -> CSE A")
@@ -103,7 +104,8 @@ def seed_data():
     
     if not assign2:
         assign2 = models.TeachingAssignment(
-            course_id=course_algo.id, professor_id=prof2.id, class_group_id=cg_b.id
+            course_id=course_algo.id, professor_id=prof2.id, class_group_id=cg_b.id,
+            default_classroom="50",
         )
         db.add(assign2)
         print("Assigned Jones -> DS -> CSE B")

@@ -40,6 +40,7 @@ class TeachingAssignmentBase(BaseModel):
     course_id: int
     professor_id: int
     class_group_id: int
+    default_classroom: Optional[str] = None
 
 class TeachingAssignmentCreate(TeachingAssignmentBase):
     pass
