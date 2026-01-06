@@ -37,7 +37,6 @@ def submit_attendance(
         raise HTTPException(status_code=401, detail="Unauthorized device. Please use your registered phone.")
 
     # 2. Find the Active Session by Code
-    # The beacon broadcasts a code. We look for a session that currently has this code active.
     session = db.query(models.AttendanceSession).filter(
         models.AttendanceSession.current_code == submission.code,
         models.AttendanceSession.is_active == True
@@ -47,8 +46,6 @@ def submit_attendance(
         raise HTTPException(status_code=404, detail="Invalid or expired beacon code.")
 
     # 3. Validate Class Membership
-    # Ensure the student is actually in the class that is having this session
-    # session -> assignment -> class_group_id
     if session.assignment.class_group_id != current_student.class_group_id:
          raise HTTPException(status_code=403, detail="You do not belong to this class group.")
 
@@ -59,14 +56,14 @@ def submit_attendance(
     ).first()
     
     if existing:
-        return existing # Return existing record (Idempotency)
+        return existing
 
     # 5. Create Attendance Record
     record = models.AttendanceRecord(
         session_id=session.id,
         student_id=current_student.id,
         status="PRESENT",
-        rssi_strength=submission.rssi_strength,
+        rssi_strength=submission.rssi,
         timestamp=datetime.now()
     )
     db.add(record)

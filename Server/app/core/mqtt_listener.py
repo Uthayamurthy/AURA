@@ -21,31 +21,21 @@ def on_connect(client, userdata, flags, rc, properties=None):
 def on_message(client, userdata, msg):
     """
     Callback when a message is received.
-    Message payload should be the active code (string).
-    Topic contains the classroom_id.
     """
     try:
         payload_code = msg.payload.decode("utf-8")
         topic = msg.topic
         
-        # Extract classroom_id from topic
         # Topic: aura/classrooms/{classroom_id}/active_code
         match = re.search(r"aura/classrooms/(.*?)/active_code", topic)
         if not match:
             print(f"Ignoring topic format: {topic}")
             return
             
-        beacon_classroom_id_str = match.group(1) # e.g. "AURA_CSC2" or just "CSC2"
+        beacon_classroom_id_str = match.group(1) 
         
-        # Note: In config.json from beacon_controller, it says:
-        # "beacon_topic": "aura/beacons/AURA_CSC2/commands",
-        # "classroom_topic": "aura/classrooms/AURA_CSC2/active_code"
-        # And "classroom_id": "CSC2"
-        # SO the ID in the URL is likely "AURA_CSC2", but our DB ClassGroup might check "CSC2".
-        # We need to map this back. 
-        # For simplicity, let's assume ClassGroup.name matches the ID in the topic 
-        # OR we strip "AURA_" prefix if present.
-        
+        # Strip prefix if present (e.g. "AURA_CSE A" -> "CSE A")
+        # But our topic is likely just "CSE A" based on config.
         classroom_name = beacon_classroom_id_str.replace("AURA_", "")
         
         print(f"Received code '{payload_code}' for classroom '{classroom_name}'")
@@ -61,15 +51,16 @@ def update_active_code(classroom_name: str, code: str):
     """
     db: Session = database.SessionLocal()
     try:
-        # Find the ClassGroup by name
+        # 1. Find ClassGroup
         class_group = db.query(models.ClassGroup).filter(models.ClassGroup.name == classroom_name).first()
         if not class_group:
-            # print(f"ClassGroup '{classroom_name}' not found in DB.")
+            print(f"ClassGroup '{classroom_name}' not found in DB.")
             return
 
-        # Find active session for this class
-        session = db.query(models.AttendanceSession).filter(
-            models.AttendanceSession.class_group_id == class_group.id,
+        # 2. Find active session
+        # NEW LOGIC: Join TeachingAssignment to filter by class_group_id
+        session = db.query(models.AttendanceSession).join(models.TeachingAssignment).filter(
+            models.TeachingAssignment.class_group_id == class_group.id,
             models.AttendanceSession.is_active == True
         ).order_by(models.AttendanceSession.start_time.desc()).first()
         

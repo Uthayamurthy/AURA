@@ -1,242 +1,229 @@
-import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
-import { useAuth } from '@/context/AuthContext';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import api from '@/lib/api';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Play, Users, Loader2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
-import { Loader2, RadioTower, StopCircle } from 'lucide-react';
-// import { toast } from 'sonner';
 
+// Interfaces
 interface Course {
+    id: number;
+    code: string;
+    name: string;
+}
+
+interface ClassGroup {
     id: number;
     name: string;
 }
 
-// Since the backend doesn't seem to expose ClassGroups universally, 
-// we might need to rely on what's available or fetch all if not too many.
-// Or we can find class groups linked to courses/timetables.
-// For now let's assume we can fetch basic lists or rely on Timetable to suggest.
+interface TeachingAssignment {
+    id: number;
+    course_id: number;
+    class_group_id: number;
+    course: Course;
+    class_group: ClassGroup;
+}
+
+interface ActiveSession {
+    id: number;
+    current_code: string | null;
+    start_time: string;
+    end_time: string;
+    assignment: TeachingAssignment;
+}
 
 export default function Home() {
-    const { } = useAuth();
-    const [courses, setCourses] = useState<Course[]>([]);
-    // const [classGroups, setClassGroups] = useState<ClassGroup[]>([]); 
-    // We actually need a way to select class group. 
-    // The backend `read_my_courses` returns courses. 
-    // We might need to select "Who" to attend. 
-    // Let's assume for now we can pick class_group_id from a hardcoded list or assume 
-    // the Course has a relationship, but the schema shows `ClassGroup` is separate.
-    // The `Timetable` links them.
+    const navigate = useNavigate();
+    const [assignments, setAssignments] = useState<TeachingAssignment[]>([]);
+    const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+    const [selectedAssignmentId, setSelectedAssignmentId] = useState<string>("");
+    const [duration, setDuration] = useState("5");
+    const [isStartDialogOpen, setIsStartDialogOpen] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
 
-    // Simplification: We will fetch `my-timetable` and use that to build the "Class" option list
-    // effectively showing classes the prof actually teaches.
-    const [availableClasses, setAvailableClasses] = useState<{ id: number, name: string }[]>([]);
-
-    const [selectedCourse, setSelectedCourse] = useState<string>('');
-    const [selectedClass, setSelectedClass] = useState<string>('');
-    const [duration, setDuration] = useState('5');
-
-    const [activeSession, setActiveSession] = useState<any>(null);
-    const [loading, setLoading] = useState(false);
-
+    // Initial Load
     useEffect(() => {
         fetchData();
-        checkActiveSession(); // We don't have an endpoint for "current active session" but we can infer or store locallly?
-        // Actually best is to check history or have a "get active session" endpoint. 
-        // We lack that. We will skip for now or use history[0] if active.
     }, []);
+
+    // POLLING: Refresh active session every 2 seconds to check for CODE
+    useEffect(() => {
+        let interval: any;
+        if (activeSession) {
+            interval = setInterval(refreshSessionStatus, 2000);
+        }
+        return () => clearInterval(interval);
+    }, [activeSession]);
 
     const fetchData = async () => {
         try {
-            const [coursesRes, timetableRes] = await Promise.all([
+            const [coursesRes, historyRes] = await Promise.all([
                 api.get('/professor/my-courses'),
-                api.get('/professor/my-timetable')
+                api.get('/professor/attendance/history')
             ]);
-            setCourses(coursesRes.data);
+            setAssignments(coursesRes.data);
 
-            // Extract unique class groups from timetable
-            // We don't have class names in timetable response (just IDs) unless we expand the schema or fetch classes.
-            // This is a small gap. I'll fetch `/class-groups` if it exists? Admin has it. Prof might not.
-            // Let's assume for this MVP we might need to show IDs or generic names if we can't get names.
-            // OR we can assume the user selects Course, and we just Broadcast to "All Classes" for that course? 
-            // The `start_attendance` requires `class_group_id`.
-            // Let's trying fetching all class groups (might fail if not authorized).
-            // Alternative: The `my-courses` might include relation? No.
-            // Let's assume we fetch timetable and maybe get names there if schema supports it?
-            // Schema `TimeTable` structure: `class_group_id`. `models.ClassGroup` has name.
-            // I'll check if I can add a quick workaround or just hardcode for demo/MVP if backend prevents.
-            // Actually, best bet: The `my-timetable` response SHOULD include class info ideally. 
-            // If not, I will mock the class names for the IDs found in timetable for now 
-            // or better yet, assume a few standard classes: 1: "CSE A", 2: "CSE B".
-
-            // Better: I'll use a mocked list for Class Options "CSE A", "CSE B" etc mapped to IDs 1,2..
-            // Since I cannot change backend easily for just this lookup without task switching.
-            setAvailableClasses([
-                { id: 1, name: 'CSE - A' },
-                { id: 2, name: 'CSE - B' },
-                { id: 3, name: 'ECE - A' },
-            ]);
-
-            // Auto Select Logic
-            const now = new Date();
-            const currentDay = now.getDay(); // 0=Sun
-            // Simple logic: if timetable matches current day/hour, pre-select.
-            const match = timetableRes.data.find((t: any) => t.day_of_week + 1 === currentDay); // Adjust index if needed
-            if (match) {
-                setSelectedCourse(match.course_id.toString());
-                setSelectedClass(match.class_group_id.toString());
-            } else if (coursesRes.data.length > 0) {
-                setSelectedCourse(coursesRes.data[0].id.toString());
-            }
-
-        } catch (err) {
-            console.error(err);
+            const running = historyRes.data.find((s: any) => s.is_active);
+            if (running) setActiveSession(running);
+        } catch (error) {
+            console.error("Failed to fetch data", error);
+        } finally {
+            setIsLoading(false);
         }
     };
 
-    const checkActiveSession = async () => {
-        // Workaround: fetch history, check if top 1 is active
+    const refreshSessionStatus = async () => {
+        // Just fetch history silently to update the code
         try {
-            const res = await api.get('/professor/attendance/history');
-            if (res.data && res.data.length > 0) {
-                const last = res.data[0];
-                if (last.is_active) {
-                    setActiveSession(last);
-                    setSelectedCourse(last.course_id.toString());
-                    setSelectedClass(last.class_group_id.toString());
-                }
+            const historyRes = await api.get('/professor/attendance/history');
+            const running = historyRes.data.find((s: any) => s.is_active);
+            if (running) {
+                setActiveSession(running); // Updates code if it changed
+            } else if (activeSession) {
+                setActiveSession(null); // Session ended remotely?
             }
-        } catch (e) { console.error(e) }
-    }
+        } catch (e) { console.error(e); }
+    };
 
-    const startSession = async () => {
-        setLoading(true);
+    const handleStartSession = async () => {
+        if (!selectedAssignmentId) return;
+        const assignment = assignments.find(a => a.id.toString() === selectedAssignmentId);
+        if (!assignment) return;
+
         try {
             const res = await api.post('/professor/attendance/start', {
-                course_id: parseInt(selectedCourse),
-                class_group_id: parseInt(selectedClass) || 1, // Fallback
+                course_id: assignment.course_id,
+                class_group_id: assignment.class_group_id,
                 duration_minutes: parseInt(duration)
             });
-            setActiveSession(res.data);
-            // toast.success("Attendance Started!"); // Commented out until toaster is ready
-            alert("Attendance Started!");
-        } catch (err: any) {
-            alert(err.response?.data?.detail || "Failed to start");
-        } finally {
-            setLoading(false);
+            // Optimistic update (Code will be null initially, Polling will fix it)
+            setActiveSession({ ...res.data, assignment: assignment }); 
+            setIsStartDialogOpen(false);
+        } catch (error) {
+            alert("Failed to start session");
         }
     };
 
-    const stopSession = async () => {
+    const handleStopSession = async () => {
         if (!activeSession) return;
-        setLoading(true);
         try {
             await api.post(`/professor/attendance/stop/${activeSession.id}`);
             setActiveSession(null);
-            alert("Attendance Stopped!");
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
+        } catch (error) {
+            alert("Failed to stop session");
         }
     };
 
+    if (isLoading) return <div className="p-8">Loading dashboard...</div>;
+
     return (
-        <div className="max-w-md mx-auto space-y-6">
-            <Card className="border-t-4 border-t-blue-600 shadow-lg">
-                <CardHeader>
-                    <CardTitle className="text-xl flex items-center gap-2">
-                        <RadioTower className={activeSession ? "text-green-500 animate-pulse" : "text-gray-400"} />
-                        Attendance Beacon
-                    </CardTitle>
-                    <CardDescription>
-                        {activeSession
-                            ? "Broadcasting... Students can mark attendance now."
-                            : "Select class details to start a session."}
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    {activeSession ? (
-                        <div className="flex flex-col items-center py-6 space-y-4">
-                            <div className="w-24 h-24 rounded-full bg-green-100 border-4 border-green-500 flex items-center justify-center animate-pulse">
-                                <span className="text-3xl font-bold text-green-700">ON</span>
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+                    <p className="text-muted-foreground">Manage your classes and attendance.</p>
+                </div>
+                {activeSession ? (
+                    <Button variant="destructive" onClick={handleStopSession}>Stop Current Session</Button>
+                ) : (
+                    <Button onClick={() => setIsStartDialogOpen(true)}>
+                        <Play className="mr-2 h-4 w-4" /> Start Attendance
+                    </Button>
+                )}
+            </div>
+
+            {/* Active Session Card */}
+            {activeSession && (
+                <Card className="border-green-500/50 bg-green-500/10">
+                    <CardHeader>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <CardTitle className="text-green-700">Session in Progress</CardTitle>
+                                <CardDescription>
+                                    {/* These will now appear correctly thanks to the schema fix */}
+                                    {activeSession.assignment?.course?.name} ({activeSession.assignment?.class_group?.name})
+                                </CardDescription>
                             </div>
-                            <div className="text-center">
-                                <p className="font-medium">Session ID: {activeSession.id}</p>
-                                <p className="text-sm text-gray-500">Ends at: {new Date(activeSession.end_time).toLocaleTimeString()}</p>
+                            <div className="text-right">
+                                {activeSession.current_code ? (
+                                    <div className="text-4xl font-mono font-bold text-green-800 tracking-wider">
+                                        {activeSession.current_code}
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2 text-green-800">
+                                        <Loader2 className="animate-spin h-5 w-5" />
+                                        <span className="font-mono font-bold">WAITING...</span>
+                                    </div>
+                                )}
+                                <div className="text-xs text-green-600 mt-1">Beacon Active</div>
                             </div>
                         </div>
-                    ) : (
-                        <>
-                            <div className="space-y-2">
-                                <Label>Course</Label>
-                                <Select value={selectedCourse} onValueChange={setSelectedCourse}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select Course" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {courses.map(c => (
-                                            <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Class</Label>
-                                    <Select value={selectedClass} onValueChange={setSelectedClass}>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select Class" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {availableClasses.map(c => (
-                                                <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Duration</Label>
-                                    <Select value={duration} onValueChange={setDuration}>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Duration" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="5">5 mins</SelectItem>
-                                            <SelectItem value="10">10 mins</SelectItem>
-                                            <SelectItem value="15">15 mins</SelectItem>
-                                            <SelectItem value="30">30 mins</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </CardContent>
-                <CardFooter>
-                    {activeSession ? (
-                        <Button variant="destructive" className="w-full h-12 text-lg" onClick={stopSession} disabled={loading}>
-                            <StopCircle className="mr-2 h-5 w-5" /> Stop Session
-                        </Button>
-                    ) : (
-                        <Button className="w-full h-12 text-lg bg-blue-600 hover:bg-blue-700" onClick={startSession} disabled={loading || !selectedCourse}>
-                            {loading ? <Loader2 className="animate-spin" /> : "Start Attendance"}
-                        </Button>
-                    )}
-                </CardFooter>
-            </Card>
-
-            <div className="px-2">
-                <h3 className="text-lg font-semibold mb-2">Today's Schedule</h3>
-                {/* Placeholder for timetable list */}
-                <Card>
-                    <CardContent className="p-4 text-sm text-gray-500 text-center">
-                        No more classes scheduled for today.
-                    </CardContent>
+                    </CardHeader>
                 </Card>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {assignments.map((assign) => (
+                    <Card key={assign.id}>
+                        <CardHeader>
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <CardTitle>{assign.course.name}</CardTitle>
+                                    <CardDescription>{assign.course.code}</CardDescription>
+                                </div>
+                                <Badge variant="outline">{assign.class_group.name}</Badge>
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
+                                <div className="flex items-center gap-1">
+                                    <Users className="h-4 w-4" />
+                                    <span>Class Group: {assign.class_group.name}</span>
+                                </div>
+                            </div>
+                            <Button 
+                                className="w-full" 
+                                variant="secondary"
+                                onClick={() => { setSelectedAssignmentId(assign.id.toString()); setIsStartDialogOpen(true); }}
+                                disabled={!!activeSession}
+                            >
+                                Start Class
+                            </Button>
+                        </CardContent>
+                    </Card>
+                ))}
             </div>
+
+            <Dialog open={isStartDialogOpen} onOpenChange={setIsStartDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Start Attendance Session</DialogTitle>
+                        <DialogDescription>Select duration for {assignments.find(a => a.id.toString() === selectedAssignmentId)?.course.name}</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Duration</label>
+                            <Select value={duration} onValueChange={setDuration}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="5">5 Minutes</SelectItem>
+                                    <SelectItem value="10">10 Minutes</SelectItem>
+                                    <SelectItem value="15">15 Minutes</SelectItem>
+                                    <SelectItem value="60">1 Hour</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsStartDialogOpen(false)}>Cancel</Button>
+                        <Button onClick={handleStartSession}>Start Broadcast</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

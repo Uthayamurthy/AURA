@@ -7,7 +7,6 @@ export const getBaseUrl = () => {
     let url = localStorage.getItem(STORAGE_KEY_URL);
     
     // If no URL is set, default to local dev URL or relative path
-    // In production, this might just be '/api/v1'
     if (!url) return 'http://localhost:8000/api/v1';
 
     // Remove trailing slash if user added it
@@ -20,6 +19,7 @@ export const getBaseUrl = () => {
     return url;
 };
 
+// Named export (for imports like: import { api } from ...)
 export const api = axios.create({
     baseURL: getBaseUrl(),
 });
@@ -46,3 +46,6 @@ api.interceptors.response.use(
         return Promise.reject(error);
     }
 );
+
+// Default export (for imports like: import api from ...)
+export default api;
