@@ -8,7 +8,7 @@ uv sync
 
 Now, start the backend Server:
 ```bash
-    uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 #### 2. Beacon Controller Bridge
 In a new Terminal instance, Go to Server/beacon_controller directory
@@ -51,11 +51,11 @@ Create an Environment, Activate and Install Stuff:
 ```bash
 sudo python3 -m venv .venv
 source .venv/bin/activate
-.venv/bin/python -m pip install btmgmt paho-mqtt
+sudo .venv/bin/python -m pip install btmgmt paho-mqtt
 ```
 Run beacon_client.py file:
 ```bash
-.venv/bin/python beacon_client.py
+sudo .venv/bin/python beacon_client.py
 ```
 
 Now, go to the professor's web portal, login (prof@aura.com/pass) and then Press Start Attendance on Classroom.
