@@ -17,6 +17,7 @@ export function Sidebar() {
         { name: 'Professors', path: '/professors', icon: GraduationCap },
         { name: 'Courses', path: '/courses', icon: BookOpen },
         { name: 'Timetable', path: '/timetable', icon: CalendarRange },
+        { name: 'Attendance', path: '/attendance', icon: CalendarRange },
     ];
 
     return (

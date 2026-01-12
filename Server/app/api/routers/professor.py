@@ -1,7 +1,7 @@
 from typing import List, Any
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas
 from app.api import deps
@@ -113,8 +113,14 @@ def read_attendance_history(
     db: Session = Depends(deps.get_db),
     current_prof: models.Professor = Depends(deps.get_current_active_professor),
 ):
-    # Return sessions for assignments taught by this prof
-    sessions = db.query(models.AttendanceSession).join(models.TeachingAssignment).filter(
+    # Eagerly load assignment, course, and class_group for proper serialization
+    sessions = db.query(models.AttendanceSession).options(
+        joinedload(models.AttendanceSession.assignment)
+            .joinedload(models.TeachingAssignment.course),
+        joinedload(models.AttendanceSession.assignment)
+            .joinedload(models.TeachingAssignment.class_group),
+        joinedload(models.AttendanceSession.records)  # For student_count
+    ).join(models.TeachingAssignment).filter(
         models.TeachingAssignment.professor_id == current_prof.id
     ).order_by(models.AttendanceSession.start_time.desc()).all()
     
@@ -129,7 +135,11 @@ def read_session_details(
     db: Session = Depends(deps.get_db),
     current_prof: models.Professor = Depends(deps.get_current_active_professor),
 ):
-    session = db.query(models.AttendanceSession).filter(models.AttendanceSession.id == session_id).first()
+    # Eagerly load records and the nested student for each record
+    session = db.query(models.AttendanceSession).options(
+        joinedload(models.AttendanceSession.records).joinedload(models.AttendanceRecord.student)
+    ).filter(models.AttendanceSession.id == session_id).first()
+
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
         
@@ -137,5 +147,5 @@ def read_session_details(
          raise HTTPException(status_code=403, detail="Not authorized")
     
     session.student_count = len(session.records)
-    session.attendees = session.records
+    # session.attendees = session.records # Removed to fix serialization error
     return session

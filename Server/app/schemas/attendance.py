@@ -4,6 +4,8 @@ from datetime import datetime
 # Import the assignment schema to nest it
 from .academic import TeachingAssignment 
 
+from .user import Student
+
 # --- Records ---
 class AttendanceRecordBase(BaseModel):
     status: str 
@@ -14,10 +16,12 @@ class AttendanceRecordCreate(BaseModel):
     code: str
     device_uuid: str
     rssi: Optional[float] = None 
-
+    
 class AttendanceRecord(AttendanceRecordBase):
     id: int
     student_id: int
+    student: Optional[Student] = None  # Added student field
+    
     class Config:
         from_attributes = True
 
@@ -37,6 +41,7 @@ class AttendanceSession(AttendanceSessionBase):
     start_time: datetime
     end_time: Optional[datetime] = None
     current_code: Optional[str] = None
+    student_count: Optional[int] = 0  # Added for history view
     
     # NESTED OBJECT: This fixes the empty () in the UI
     assignment: Optional[TeachingAssignment] = None 
@@ -47,7 +52,7 @@ class AttendanceSession(AttendanceSessionBase):
 class AttendanceSessionDetails(AttendanceSession):
     records: List[AttendanceRecord] = []
     student_count: Optional[int] = 0
-    attendees: Optional[List[Any]] = []
+    attendees: Optional[List[AttendanceRecord]] = []
     
     class Config:
         from_attributes = True

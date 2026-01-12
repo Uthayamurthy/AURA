@@ -7,6 +7,7 @@ import Students from '@/pages/Students';
 import Professors from '@/pages/Professors';
 import Courses from '@/pages/Courses';
 import Timetable from '@/pages/Timetable';
+import Attendance from '@/pages/Attendance';
 import DashboardLayout from '@/components/Layout/DashboardLayout';
 
 const queryClient = new QueryClient();
@@ -75,9 +76,19 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/attendance"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <Attendance />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
         </Routes>
       </Router>
-    </QueryClientProvider>
+    </QueryClientProvider >
   );
 }
 

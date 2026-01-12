@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+// import { useNavigate } from 'react-router-dom'; // Unused
 import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Play, Users, Loader2, MapPin } from 'lucide-react';
+import { Play, Users, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -29,16 +29,30 @@ interface TeachingAssignment {
     class_group: ClassGroup;
 }
 
+interface Student {
+    id: number;
+    name: string;
+    digital_id: number;
+}
+
+interface AttendanceRecord {
+    id: number;
+    status: string;
+    timestamp: string;
+    student: Student;
+}
+
 interface ActiveSession {
     id: number;
     current_code: string | null;
     start_time: string;
     end_time: string;
     assignment: TeachingAssignment;
+    records?: AttendanceRecord[];
 }
 
 export default function Home() {
-    const navigate = useNavigate();
+    // const navigate = useNavigate(); // Unused
     const [assignments, setAssignments] = useState<TeachingAssignment[]>([]);
     const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
     const [selectedAssignmentId, setSelectedAssignmentId] = useState<string>("");
@@ -80,14 +94,14 @@ export default function Home() {
     const refreshSessionStatus = async () => {
         // Just fetch history silently to update the code
         try {
-            const historyRes = await api.get('/professor/attendance/history');
-            const running = historyRes.data.find((s: any) => s.is_active);
-            if (running) {
-                setActiveSession(running); // Updates code if it changed
-            } else if (activeSession) {
-                setActiveSession(null); // Session ended remotely?
-            }
-        } catch (e) { console.error(e); }
+            // Changed to fetch specific session details including attendees
+            const sessionRes = await api.get(`/professor/attendance/session/${activeSession?.id}`);
+            setActiveSession(sessionRes.data);
+        } catch (e) {
+            console.error("Failed to refresh session", e);
+            // If 404, session might be gone
+            // setActiveSession(null); 
+        }
     };
 
     const handleStartSession = async () => {
@@ -105,7 +119,7 @@ export default function Home() {
                 room_number: roomToSend
             });
             // Optimistic update (Code will be null initially, Polling will fix it)
-            setActiveSession({ ...res.data, assignment: assignment }); 
+            setActiveSession({ ...res.data, assignment: assignment });
             setIsStartDialogOpen(false);
         } catch (error) {
             alert("Failed to start session");
@@ -167,6 +181,36 @@ export default function Home() {
                             </div>
                         </div>
                     </CardHeader>
+                    <CardContent>
+                        {activeSession.records && activeSession.records.length > 0 ? (
+                            <div className="mt-4 border rounded-md overflow-hidden">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-4 py-2 text-left">Student</th>
+                                            <th className="px-4 py-2 text-left">ID</th>
+                                            <th className="px-4 py-2 text-right">Time</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                        {activeSession.records.map((record) => (
+                                            <tr key={record.id} className="bg-white">
+                                                <td className="px-4 py-2 font-medium">{record.student?.name}</td>
+                                                <td className="px-4 py-2 text-gray-500">{record.student?.digital_id}</td>
+                                                <td className="px-4 py-2 text-right text-gray-500">
+                                                    {new Date(record.timestamp).toLocaleTimeString()}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="mt-4 text-center text-sm text-muted-foreground p-4 bg-white/50 rounded-md border border-dashed">
+                                No students have checked in yet.
+                            </div>
+                        )}
+                    </CardContent>
                 </Card>
             )}
 
@@ -192,8 +236,8 @@ export default function Home() {
                                     <span> Room: LH{assign.default_classroom || "N/A"}</span>
                                 </div>
                             </div>
-                            <Button 
-                                className="w-full" 
+                            <Button
+                                className="w-full"
                                 variant="secondary"
                                 onClick={() => { setSelectedAssignmentId(assign.id.toString()); setIsStartDialogOpen(true); }}
                                 disabled={!!activeSession}
@@ -231,6 +275,6 @@ export default function Home() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div>
+        </div >
     );
 }

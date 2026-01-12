@@ -3,8 +3,15 @@ from datetime import datetime, timedelta
 import csv
 import codecs
 from sqlalchemy import func, case, and_
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import func, case, and_, desc
+import csv
+import io
+import codecs
+from typing import List, Any, Optional
+from datetime import datetime, timedelta, date
 
 from app import models, schemas
 from app.api import deps
@@ -318,3 +325,87 @@ def upload_timetable(file: UploadFile = File(...), db: Session = Depends(deps.ge
             
     db.commit()
     return {"added": count, "errors": errors}
+
+# --- Attendance Records ---
+@router.get("/attendance/records", response_model=List[schemas.attendance.AttendanceRecord])
+def read_attendance_records(
+    skip: int = 0,
+    limit: int = 100,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    class_group_id: Optional[int] = None,
+    db: Session = Depends(deps.get_db),
+    current_admin: models.Admin = Depends(deps.get_current_active_admin)
+):
+    query = db.query(models.AttendanceRecord).join(models.AttendanceSession).join(models.Student)
+    
+    if start_date:
+        query = query.filter(func.date(models.AttendanceSession.start_time) >= start_date)
+    if end_date:
+        query = query.filter(func.date(models.AttendanceSession.start_time) <= end_date)
+    
+    if class_group_id:
+         query = query.join(models.TeachingAssignment, models.AttendanceSession.assignment_id == models.TeachingAssignment.id)\
+                      .filter(models.TeachingAssignment.class_group_id == class_group_id)
+
+    # Order by timestamp desc
+    query = query.order_by(desc(models.AttendanceRecord.timestamp))
+    
+    return query.offset(skip).limit(limit).all()
+
+@router.get("/attendance/export")
+def export_attendance_records(
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    class_group_id: Optional[int] = None,
+    db: Session = Depends(deps.get_db),
+    current_admin: models.Admin = Depends(deps.get_current_active_admin)
+):
+    query = db.query(
+        models.AttendanceRecord,
+        models.Student,
+        models.AttendanceSession,
+        models.ClassGroup
+    ).join(models.Student, models.AttendanceRecord.student_id == models.Student.id)\
+     .join(models.AttendanceSession, models.AttendanceRecord.session_id == models.AttendanceSession.id)\
+     .join(models.TeachingAssignment, models.AttendanceSession.assignment_id == models.TeachingAssignment.id)\
+     .join(models.ClassGroup, models.TeachingAssignment.class_group_id == models.ClassGroup.id)
+
+    if start_date:
+        query = query.filter(func.date(models.AttendanceSession.start_time) >= start_date)
+    if end_date:
+        query = query.filter(func.date(models.AttendanceSession.start_time) <= end_date)
+    if class_group_id:
+        query = query.filter(models.TeachingAssignment.class_group_id == class_group_id)
+        
+    query = query.order_by(desc(models.AttendanceRecord.timestamp))
+    
+    results = query.all()
+
+    # Create CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header
+    writer.writerow(["Date", "Time", "Student Name", "Student ID", "Class", "Status", "Session ID"])
+    
+    for record, student, session, class_group in results:
+        writer.writerow([
+            record.timestamp.strftime("%Y-%m-%d") if record.timestamp else "",
+            record.timestamp.strftime("%H:%M:%S") if record.timestamp else "",
+            student.name,
+            student.digital_id,
+            class_group.name,
+            record.status,
+            session.id
+        ])
+        
+    output.seek(0)
+    
+    current_time = datetime.now().strftime("%Y%m%d%H%M%S")
+    response = StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv"
+    )
+    response.headers["Content-Disposition"] = f"attachment; filename=attendance_export_{current_time}.csv"
+    return response
