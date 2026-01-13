@@ -5,9 +5,9 @@ const STORAGE_KEY_URL = 'aura_server_url';
 // Helper to get the full API URL
 export const getBaseUrl = () => {
     let url = localStorage.getItem(STORAGE_KEY_URL);
-    
-    // If no URL is set, default to local dev URL or relative path
-    if (!url) return 'http://localhost:8000/api/v1';
+
+    // If no URL is set, default to env var or local dev URL
+    if (!url) return import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
     // Remove trailing slash if user added it
     url = url.replace(/\/$/, '');
@@ -29,10 +29,10 @@ api.interceptors.request.use((config) => {
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
     }
-    
+
     // Update baseURL dynamically in case it changed in localStorage
     config.baseURL = getBaseUrl();
-    
+
     return config;
 });
 
