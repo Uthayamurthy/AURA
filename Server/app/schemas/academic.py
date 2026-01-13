@@ -38,17 +38,20 @@ class Course(CourseBase):
 # Teaching Assignment
 class TeachingAssignmentBase(BaseModel):
     course_id: int
-    professor_id: int
+    professor_id: Optional[int] = None
     class_group_id: int
     default_classroom: Optional[str] = None
 
 class TeachingAssignmentCreate(TeachingAssignmentBase):
     pass
 
+from app.schemas.user import Professor
+
 class TeachingAssignment(TeachingAssignmentBase):
     id: int
     course: Optional[Course] = None
     class_group: Optional[ClassGroup] = None
+    professor: Optional[Professor] = None
     
     class Config:
         from_attributes = True

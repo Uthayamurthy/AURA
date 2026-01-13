@@ -34,7 +34,7 @@ export default function Timetable() {
     const { data: courses = [] } = useQuery({ queryKey: ['courses'], queryFn: async () => (await api.get('/admin/courses')).data });
     const { data: professors = [] } = useQuery({ queryKey: ['professors'], queryFn: async () => (await api.get('/admin/professors')).data });
     const { data: bellSchedule = [] } = useQuery({ queryKey: ['bellSchedule'], queryFn: async () => (await api.get('/admin/bell-schedule')).data });
-    
+
     const { data: timetableEntries = [] } = useQuery({
         queryKey: ['timetable', selectedClass],
         queryFn: async () => selectedClass ? (await api.get(`/admin/timetable/${selectedClass}`)).data : [],
@@ -122,9 +122,13 @@ export default function Timetable() {
         const entry = timetableEntries.find((t: any) => t.day_of_week === dayIdx && t.hour_slot === slotNum);
         if (!entry) return null;
         return (
-            <div className="text-xs">
-                <div className="font-bold truncate">{entry.assignment?.course?.name || "Course"}</div>
-                <div className="text-gray-500 truncate">{entry.assignment?.professor?.name || "Prof"}</div>
+            <div className="text-xs w-full overflow-hidden px-1 space-y-1">
+                <div className="font-bold truncate text-center" title={entry.assignment?.course?.name}>
+                    {entry.assignment?.course?.name || "Course"}
+                </div>
+                <div className="text-gray-500 truncate text-center" title={entry.assignment?.professor?.name}>
+                    {entry.assignment?.professor?.name || "Prof"}
+                </div>
             </div>
         );
     };
@@ -172,10 +176,10 @@ export default function Timetable() {
                             <div key={day} className="flex border-b last:border-b-0">
                                 <div className="w-24 flex-shrink-0 p-4 font-medium bg-muted/20 border-r">{day}</div>
                                 {bellSchedule.map((slot: any) => (
-                                    <div 
-                                        key={`${dayIdx}-${slot.slot_number}`} 
+                                    <div
+                                        key={`${dayIdx}-${slot.slot_number}`}
                                         className="flex-1 p-2 border-r last:border-r-0 min-w-[100px] h-24 cursor-pointer hover:bg-blue-50 transition-colors flex items-center justify-center text-center border-dashed border-gray-200"
-                                        onClick={() => { if(!selectedClass) return alert("Select Class"); setSelectedCell({ day: dayIdx, slot: slot.slot_number }); setIsAssignOpen(true); }}
+                                        onClick={() => { if (!selectedClass) return alert("Select Class"); setSelectedCell({ day: dayIdx, slot: slot.slot_number }); setIsAssignOpen(true); }}
                                     >
                                         {getSlotContent(dayIdx, slot.slot_number) || <span className="text-gray-300 text-sm">Empty</span>}
                                     </div>
@@ -216,17 +220,17 @@ export default function Timetable() {
                 <DialogContent className="max-w-xl">
                     <DialogHeader><DialogTitle>Bell Schedule Configuration</DialogTitle></DialogHeader>
                     <div className="py-4 space-y-4 max-h-[60vh] overflow-y-auto">
-                       <p className="text-sm text-gray-500">Edit standard start/end times for all classes.</p>
-                       <div className="space-y-3">
-                           {tempSchedule.map((s, idx) => (
-                               <div key={s.slot_number} className="grid grid-cols-4 gap-4 items-center">
-                                   <span className="font-medium col-span-1">Period {s.slot_number}</span>
-                                   <Input className="col-span-1" type="time" value={s.start_time?.slice(0, 5)} onChange={(e) => handleBellChange(idx, 'start_time', e.target.value)} />
-                                   <span className="text-center">-</span>
-                                   <Input className="col-span-1" type="time" value={s.end_time?.slice(0, 5)} onChange={(e) => handleBellChange(idx, 'end_time', e.target.value)} />
-                               </div>
-                           ))}
-                       </div>
+                        <p className="text-sm text-gray-500">Edit standard start/end times for all classes.</p>
+                        <div className="space-y-3">
+                            {tempSchedule.map((s, idx) => (
+                                <div key={s.slot_number} className="grid grid-cols-4 gap-4 items-center">
+                                    <span className="font-medium col-span-1">Period {s.slot_number}</span>
+                                    <Input className="col-span-1" type="time" value={s.start_time?.slice(0, 5)} onChange={(e) => handleBellChange(idx, 'start_time', e.target.value)} />
+                                    <span className="text-center">-</span>
+                                    <Input className="col-span-1" type="time" value={s.end_time?.slice(0, 5)} onChange={(e) => handleBellChange(idx, 'end_time', e.target.value)} />
+                                </div>
+                            ))}
+                        </div>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsBellOpen(false)}>Cancel</Button>
