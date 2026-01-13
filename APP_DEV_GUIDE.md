@@ -1,4 +1,8 @@
 ### Stuff you need to start and setup before you work on the app
+
+> [!TIP]
+> **Default Credentials**: For a complete list of pre-seeded accounts (Admins, Professors, Students) and their passwords, please refer to [CREDENTIALS.md](CREDENTIALS.md).
+
 #### 1. Backend Server
 In a new Terminal instance, Go to Server directory and run uv sync once:
 ```bash

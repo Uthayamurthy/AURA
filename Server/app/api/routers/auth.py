@@ -3,6 +3,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app import models, schemas
 from app.core import security
@@ -30,14 +31,14 @@ def login_access_token(
         user = admin
         role = "admin"
     else:
-        # 2. Try Professor
-        prof = db.query(models.Professor).filter(models.Professor.email == form_data.username).first()
+        # 2. Try Professor (Case Insensitive)
+        prof = db.query(models.Professor).filter(func.lower(models.Professor.email) == form_data.username.lower()).first()
         if prof and security.verify_password(form_data.password, prof.password_hash):
             user = prof
             role = "professor"
         else:
-            # 3. Try Student
-            student = db.query(models.Student).filter(models.Student.email == form_data.username).first()
+            # 3. Try Student (Case Insensitive)
+            student = db.query(models.Student).filter(func.lower(models.Student.email) == form_data.username.lower()).first()
             if student and security.verify_password(form_data.password, student.password_hash):
                 user = student
                 role = "student"

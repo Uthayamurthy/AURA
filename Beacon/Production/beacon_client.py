@@ -7,7 +7,7 @@ import btmgmt
 
 MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost") 
 MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
-ROOM_ID = os.getenv("ROOM_ID", "CSELH49") # This will change depending on the class
+ROOM_ID = os.getenv("ROOM_ID", "CSELH51") 
 
 COMMAND_TOPIC = f"aura/beacons/AURA_{ROOM_ID}/commands"
 
