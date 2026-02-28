@@ -10,9 +10,9 @@ class ClassGroup(Base):
     department = Column(String)
     year = Column(Integer)
 
-    students = relationship("Student", back_populates="class_group")
+    students = relationship("Student", back_populates="class_group", cascade="all, delete-orphan")
     # Link to assignments that belong to this class
-    assignments = relationship("TeachingAssignment", back_populates="class_group")
+    assignments = relationship("TeachingAssignment", back_populates="class_group", cascade="all, delete-orphan")
 
 class Course(Base):
     """
@@ -25,7 +25,7 @@ class Course(Base):
     name = Column(String) # e.g. Data Structures
     department = Column(String) # e.g. CSE
 
-    assignments = relationship("TeachingAssignment", back_populates="course")
+    assignments = relationship("TeachingAssignment", back_populates="course", cascade="all, delete-orphan")
 
 class TeachingAssignment(Base):
     """
@@ -46,8 +46,8 @@ class TeachingAssignment(Base):
     professor = relationship("Professor", back_populates="assignments")
     class_group = relationship("ClassGroup", back_populates="assignments")
     
-    timetables = relationship("TimeTable", back_populates="assignment")
-    attendance_sessions = relationship("AttendanceSession", back_populates="assignment")
+    timetables = relationship("TimeTable", back_populates="assignment", cascade="all, delete-orphan")
+    attendance_sessions = relationship("AttendanceSession", back_populates="assignment", cascade="all, delete-orphan")
 
 class TimeTable(Base):
     __tablename__ = "timetables"

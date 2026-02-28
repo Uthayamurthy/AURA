@@ -51,6 +51,7 @@ class StudentCreate(StudentBase):
     id: int # 13 Digit ID
     digital_id: int # 7 Digit ID
     email: EmailStr
+    password: Optional[str] = None # Admin can optionally set a password
 
 class StudentUpdate(BaseModel):
     name: Optional[str] = None

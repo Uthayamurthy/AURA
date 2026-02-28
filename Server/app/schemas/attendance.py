@@ -52,7 +52,6 @@ class AttendanceSession(AttendanceSessionBase):
 class AttendanceSessionDetails(AttendanceSession):
     records: List[AttendanceRecord] = []
     student_count: Optional[int] = 0
-    attendees: Optional[List[AttendanceRecord]] = []
     
     class Config:
         from_attributes = True

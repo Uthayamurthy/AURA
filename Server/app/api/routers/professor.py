@@ -1,3 +1,4 @@
+import logging
 from typing import List, Any
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,6 +7,8 @@ from sqlalchemy.orm import Session, joinedload
 from app import models, schemas
 from app.api import deps
 from app.core import mqtt
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -98,12 +101,14 @@ def stop_attendance(
     session.end_time = datetime.now(timezone.utc)
     db.commit()
     
-    # Stop Beacon
+    # Stop Beacon — use the same composite classroom_id format as start
     class_group = session.assignment.class_group
     if class_group:
-         mqtt.send_beacon_command(
+        # Use composite ID consistent with start_session
+        composite_classroom_id = f"{class_group.name}_{session_id}"
+        mqtt.send_beacon_command(
             command="stop_session",
-            classroom_id=class_group.name
+            classroom_id=composite_classroom_id
         )
     
     return {"message": "Attendance stopped"}
@@ -147,5 +152,4 @@ def read_session_details(
          raise HTTPException(status_code=403, detail="Not authorized")
     
     session.student_count = len(session.records)
-    # session.attendees = session.records # Removed to fix serialization error
     return session

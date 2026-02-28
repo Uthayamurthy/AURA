@@ -19,7 +19,7 @@ class Professor(Base):
     password_hash = Column(String)
     
     # Relationship to TeachingAssignment
-    assignments = relationship("TeachingAssignment", back_populates="professor")
+    assignments = relationship("TeachingAssignment", back_populates="professor", cascade="all, delete-orphan")
 
 class Student(Base):
     __tablename__ = "students"
@@ -36,4 +36,4 @@ class Student(Base):
     class_group_id = Column(Integer, ForeignKey("class_groups.id"))
     class_group = relationship("ClassGroup", back_populates="students")
     
-    attendance_records = relationship("AttendanceRecord", back_populates="student")
+    attendance_records = relationship("AttendanceRecord", back_populates="student", cascade="all, delete-orphan")

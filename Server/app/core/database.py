@@ -1,6 +1,9 @@
+import logging
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Database Setup
 connect_args = {}
@@ -26,14 +29,17 @@ def init_db():
     try:
         admin = db.query(models.Admin).filter(models.Admin.username == "admin").first()
         if not admin:
-            print("Seeding default admin user...")
+            logger.warning(
+                "Seeding default admin user with password 'admin'. "
+                "IMPORTANT: Change the admin password immediately after first login!"
+            )
             db_admin = models.Admin(
                 username="admin",
                 password_hash=get_password_hash("admin")
             )
             db.add(db_admin)
             db.commit()
-            print("Admin user seeded (admin/admin)")
+            logger.info("Admin user seeded (admin/admin)")
     finally:
         db.close()
 

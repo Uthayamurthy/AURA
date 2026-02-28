@@ -16,7 +16,7 @@ class AttendanceSession(Base):
     is_active = Column(Boolean, default=True)
     current_code = Column(String, nullable=True, index=True)
 
-    records = relationship("AttendanceRecord", back_populates="session")
+    records = relationship("AttendanceRecord", back_populates="session", cascade="all, delete-orphan")
 
 class AttendanceRecord(Base):
     __tablename__ = "attendance_records"

@@ -1,7 +1,7 @@
 from typing import List, Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app import models, schemas
 from app.api import deps
@@ -64,7 +64,7 @@ def submit_attendance(
         student_id=current_student.id,
         status="PRESENT",
         rssi_strength=submission.rssi,
-        timestamp=datetime.now()
+        timestamp=datetime.now(timezone.utc)
     )
     db.add(record)
     db.commit()
