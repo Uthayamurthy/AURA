@@ -188,7 +188,9 @@ if __name__ == "__main__":
     print(f"Connecting to MQTT broker at '{MQTT_BROKER}:{MQTT_PORT}'...")
     try:
         client.connect(MQTT_BROKER, MQTT_PORT, 60)
-        client.loop_forever()
+        client.loop_start()
+        while True:
+            time.sleep(1)
     except KeyboardInterrupt:
         print("\nShutting down...")
         health_stop.set()
@@ -196,7 +198,9 @@ if __name__ == "__main__":
             beacon.stop_broadcast()
         except:
             pass
+        client.loop_stop()
         client.disconnect()
+        sys.exit(0)
     except Exception as e:
         print(f"❌ Fatal Connection Error: {e}")
         print(f"   Please verify that MQTT_BROKER='{MQTT_BROKER}' in .env is a reachable IP address of your Server Pi.")
