@@ -5,8 +5,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { format } from 'date-fns';
 import { Eye, Download, Users, Loader2 } from 'lucide-react';
+import { formatIstCsvTimestamp, formatIstDate, formatIstDateKey, formatIstTime } from '@/lib/date';
 
 interface Student {
     id: number;
@@ -77,7 +77,7 @@ export default function Statistics() {
 
         const courseName = selectedSession.assignment?.course?.name || 'Unknown';
         const className = selectedSession.assignment?.class_group?.name || 'Unknown';
-        const dateStr = format(new Date(selectedSession.start_time), 'yyyy-MM-dd');
+        const dateStr = formatIstDateKey(selectedSession.start_time);
 
         // Create CSV content
         const headers = ['S.No', 'Student Name', 'Student ID', 'Email', 'Status', 'Timestamp'];
@@ -87,7 +87,7 @@ export default function Statistics() {
             record.student?.digital_id || 'N/A',
             record.student?.email || 'N/A',
             record.status,
-            format(new Date(record.timestamp), 'yyyy-MM-dd HH:mm:ss')
+            formatIstCsvTimestamp(record.timestamp)
         ]);
 
         const csvContent = [
@@ -141,10 +141,10 @@ export default function Statistics() {
                                     <TableRow key={session.id}>
                                         <TableCell>
                                             <div className="font-medium">
-                                                {format(new Date(session.start_time), 'MMM d, yyyy')}
+                                                {formatIstDate(session.start_time)}
                                             </div>
                                             <div className="text-xs text-muted-foreground">
-                                                {format(new Date(session.start_time), 'h:mm a')}
+                                                {formatIstTime(session.start_time, false)}
                                             </div>
                                         </TableCell>
                                         <TableCell>{session.assignment?.course?.name || "Unknown Course"}</TableCell>
@@ -196,7 +196,7 @@ export default function Statistics() {
                             ) : 'Session Details'}
                         </DialogTitle>
                         <DialogDescription>
-                            {selectedSession && format(new Date(selectedSession.start_time), 'MMMM d, yyyy • h:mm a')}
+                            {selectedSession && `${formatIstDate(selectedSession.start_time, true)} • ${formatIstTime(selectedSession.start_time, false)}`}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -229,7 +229,7 @@ export default function Statistics() {
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell className="text-right text-muted-foreground">
-                                                    {format(new Date(record.timestamp), 'h:mm:ss a')}
+                                                    {formatIstTime(record.timestamp)}
                                                 </TableCell>
                                             </TableRow>
                                         ))}

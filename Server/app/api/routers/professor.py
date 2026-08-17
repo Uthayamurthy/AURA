@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import models, schemas
 from app.api import deps
 from app.core import mqtt
+from app.core.device_tracker import tracker as device_tracker
 from app.core.ws_manager import manager as ws_manager
 from jose import jwt, JWTError
 from app.core.config import settings
@@ -14,6 +15,18 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def sync_session_headcount(session: models.AttendanceSession, db: Session) -> None:
+    """Copy the latest device value into a session that may have started later."""
+    if not session.room_number:
+        return
+
+    live_headcount = device_tracker.get_headcount(session.room_number)
+    if live_headcount is not None and session.headcount != live_headcount:
+        session.headcount = live_headcount
+        db.commit()
+        db.refresh(session)
 
 @router.get("/my-courses", response_model=List[schemas.academic.TeachingAssignment])
 def read_my_courses(
@@ -62,6 +75,7 @@ def start_attendance(
     db_session = models.AttendanceSession(
         assignment_id=assignment.id, # Link to Assignment now!
         room_number=session_in.room_number,
+        headcount=device_tracker.get_headcount(session_in.room_number),
         start_time=datetime.now(timezone.utc),
         end_time=end_time,
         is_active=True
@@ -156,7 +170,8 @@ def read_session_details(
         
     if session.assignment.professor_id != current_prof.id:
          raise HTTPException(status_code=403, detail="Not authorized")
-    
+
+    sync_session_headcount(session, db)
     session.student_count = len(session.records)
     return session
 
@@ -193,7 +208,8 @@ def verify_headcount(
         raise HTTPException(status_code=404, detail="Session not found")
     if session.assignment.professor_id != current_prof.id:
         raise HTTPException(status_code=403, detail="Not authorized")
-    
+
+    sync_session_headcount(session, db)
     attendance_count = len(session.records)
     headcount = session.headcount
     headcount_students = (headcount - 1) if headcount is not None else None
@@ -245,6 +261,7 @@ def retake_attendance(
     new_session = models.AttendanceSession(
         assignment_id=old_session.assignment_id,
         room_number=old_session.room_number,
+        headcount=device_tracker.get_headcount(old_session.room_number),
         start_time=datetime.now(timezone.utc),
         end_time=end_time,
         is_active=True

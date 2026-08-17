@@ -46,6 +46,10 @@ class DeviceTracker:
         self.devices[key].headcount = value
         self.devices[key].last_seen = time.time()
 
+    def get_headcount(self, room_id: str) -> Optional[int]:
+        device = self.devices.get(f"headcount:{room_id}")
+        return device.headcount if device else None
+
     def get_all_devices(self) -> list[dict]:
         return [device.to_dict() for device in self.devices.values()]
 

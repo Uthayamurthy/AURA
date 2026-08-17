@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { useSessionWebSocket } from '@/hooks/useSessionWebSocket';
+import { formatIstTime } from '@/lib/date';
 
 // Interfaces
 interface Course {
@@ -206,7 +207,7 @@ export default function Home() {
             setActiveSession({ ...res.data, assignment });
             setVerifyResult(null);
             setIsVerifyDialogOpen(false);
-            setHeadcount(null);
+            setHeadcount(res.data.headcount ?? null);
             setAttendanceCount(0);
             toast.success('Attendance retake started');
         } catch (error) {
@@ -276,6 +277,8 @@ export default function Home() {
             });
             // Optimistic update (Code will be null initially, Polling will fix it)
             setActiveSession({ ...res.data, assignment: assignment });
+            setHeadcount(res.data.headcount ?? null);
+            setAttendanceCount(0);
             setIsStartDialogOpen(false);
         } catch (error) {
             toast.error("Failed to start session");
@@ -395,7 +398,7 @@ export default function Home() {
                                                 <td className="px-4 py-2 font-medium">{record.student?.name}</td>
                                                 <td className="px-4 py-2 text-gray-500">{record.student?.digital_id}</td>
                                                 <td className="px-4 py-2 text-right text-gray-500">
-                                                    {new Date(record.timestamp).toLocaleTimeString()}
+                                                    {formatIstTime(record.timestamp)}
                                                 </td>
                                             </tr>
                                         ))}
