@@ -18,10 +18,14 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+import asyncio
+from app.core.ws_manager import manager as ws_manager
+
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     init_db()
+    ws_manager.set_event_loop(asyncio.get_event_loop())
     mqtt_client = mqtt_listener.start_mqtt_listener()
     logger.info("Startup: Database tables created & MQTT Listener started")
     yield

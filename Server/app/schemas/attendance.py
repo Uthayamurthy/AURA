@@ -42,6 +42,10 @@ class AttendanceSession(AttendanceSessionBase):
     end_time: Optional[datetime] = None
     current_code: Optional[str] = None
     student_count: Optional[int] = 0  # Added for history view
+    room_number: Optional[str] = None
+    headcount: Optional[int] = None
+    is_verified: bool = False
+    verification_status: Optional[str] = None
     
     # NESTED OBJECT: This fixes the empty () in the UI
     assignment: Optional[TeachingAssignment] = None 
@@ -52,6 +56,19 @@ class AttendanceSession(AttendanceSessionBase):
 class AttendanceSessionDetails(AttendanceSession):
     records: List[AttendanceRecord] = []
     student_count: Optional[int] = 0
+    room_number: Optional[str] = None
+    headcount: Optional[int] = None
+    is_verified: bool = False
+    verification_status: Optional[str] = None
     
     class Config:
         from_attributes = True
+
+class HeadcountVerifyResponse(BaseModel):
+    session_id: int
+    headcount: Optional[int] = None
+    headcount_students: Optional[int] = None  # headcount - 1
+    attendance_count: int
+    is_match: bool
+    difference: int
+    records: List[AttendanceRecord] = []

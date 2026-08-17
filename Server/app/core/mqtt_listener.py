@@ -1,6 +1,5 @@
 import paho.mqtt.client as mqtt_client
 import logging
-import json
 from app.core.config import settings
 from app.core import database
 from app import models
@@ -11,12 +10,15 @@ logger = logging.getLogger(__name__)
 
 # Topic pattern to match: aura/classrooms/{classroom_id}/active_code
 TOPIC_PATTERN = "aura/classrooms/+/active_code"
+HEADCOUNT_TOPIC_PATTERN = "aura/rooms/+/headcount"
+from app.core.ws_manager import manager as ws_manager
 
 def on_connect(client, userdata, flags, rc, properties=None):
     if rc == 0:
         logger.info("MQTT Listener connected.")
         client.subscribe(TOPIC_PATTERN)
-        logger.info(f"Subscribed to {TOPIC_PATTERN}")
+        client.subscribe(HEADCOUNT_TOPIC_PATTERN)
+        logger.info(f"Subscribed to {TOPIC_PATTERN} and {HEADCOUNT_TOPIC_PATTERN}")
     else:
         logger.error(f"Failed to connect to MQTT broker, return code {rc}")
 
@@ -25,6 +27,17 @@ def on_message(client, userdata, msg):
         payload_code = msg.payload.decode("utf-8")
         topic = msg.topic
         
+        # Check headcount topic first
+        headcount_match = re.search(r"aura/rooms/(.*?)/headcount", topic)
+        if headcount_match:
+            room_number = headcount_match.group(1)
+            try:
+                headcount_value = int(payload_code)
+                update_headcount(room_number, headcount_value)
+            except ValueError:
+                logger.error(f"Invalid headcount value: {payload_code}")
+            return
+            
         # Match topic: aura/classrooms/{Composite_ID}/active_code
         match = re.search(r"aura/classrooms/(.*?)/active_code", topic)
         if not match:
@@ -80,6 +93,37 @@ def update_active_code(classroom_name: str, code: str):
 
     except Exception as e:
         logger.error(f"DB Error updating code: {e}", exc_info=True)
+    finally:
+        db.close()
+
+def update_headcount(room_number: str, headcount_value: int):
+    """
+    Updates the headcount for the active session in a specific room.
+    """
+    db: Session = database.SessionLocal()
+    try:
+        session = db.query(models.AttendanceSession).filter(
+            models.AttendanceSession.room_number == room_number,
+            models.AttendanceSession.is_active == True
+        ).order_by(models.AttendanceSession.start_time.desc()).first()
+        
+        if session:
+            session.headcount = headcount_value
+            db.commit()
+            attendance_count = db.query(models.AttendanceRecord).filter(
+                models.AttendanceRecord.session_id == session.id
+            ).count()
+            ws_manager.broadcast_from_thread(session.id, {
+                "type": "headcount_update",
+                "session_id": session.id,
+                "headcount": headcount_value,
+                "attendance_count": attendance_count
+            })
+            logger.info(f"Updated headcount for room {room_number} to {headcount_value}")
+        else:
+            logger.warning(f"No active session found for room {room_number}")
+    except Exception as e:
+        logger.error(f"DB Error updating headcount: {e}", exc_info=True)
     finally:
         db.close()
 

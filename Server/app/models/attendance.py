@@ -15,6 +15,12 @@ class AttendanceSession(Base):
     end_time = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
     current_code = Column(String, nullable=True, index=True)
+    
+    room_number = Column(String, nullable=True)
+    headcount = Column(Integer, nullable=True)
+    is_verified = Column(Boolean, default=False)
+    verification_status = Column(String, nullable=True)
+
 
     records = relationship("AttendanceRecord", back_populates="session", cascade="all, delete-orphan")
 

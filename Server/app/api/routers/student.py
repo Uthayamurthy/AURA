@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from app import models, schemas
 from app.api import deps
+from app.core.ws_manager import manager as ws_manager
 
 router = APIRouter()
 
@@ -69,5 +70,24 @@ def submit_attendance(
     db.add(record)
     db.commit()
     db.refresh(record)
+    
+    attendance_count = db.query(models.AttendanceRecord).filter(
+        models.AttendanceRecord.session_id == session.id
+    ).count()
+
+    ws_manager.broadcast_from_thread(session.id, {
+        "type": "attendance_update",
+        "session_id": session.id,
+        "headcount": session.headcount,
+        "attendance_count": attendance_count,
+        "new_record": {
+            "id": record.id,
+            "student_name": current_student.name,
+            "student_id": current_student.id,
+            "digital_id": current_student.digital_id,
+            "timestamp": record.timestamp.isoformat() if record.timestamp else None,
+            "status": record.status
+        }
+    })
     
     return record
