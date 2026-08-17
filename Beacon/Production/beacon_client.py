@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import json
+import threading
 from pathlib import Path
 import paho.mqtt.client as mqtt
 import btmgmt
@@ -21,6 +22,7 @@ MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
 ROOM_ID = os.getenv("ROOM_ID", "CSELH51") 
 
 COMMAND_TOPIC = f"aura/beacons/AURA_{ROOM_ID}/commands"
+HEALTH_TOPIC = f"aura/devices/beacon/{ROOM_ID}/health"
 
 class Beacon:
     def __init__(self, debug=False):
@@ -166,18 +168,39 @@ if __name__ == "__main__":
     client.on_connect = on_connect
     client.on_message = on_message
 
+    # Start health heartbeat thread
+    health_stop = threading.Event()
+    def health_worker():
+        """Publishes a heartbeat every 5 seconds."""
+        while not health_stop.is_set():
+            try:
+                client.publish(HEALTH_TOPIC, json.dumps({
+                    "status": "online", "device_id": ROOM_ID
+                }), qos=0)
+            except Exception:
+                pass
+            health_stop.wait(5)
+
+    health_thread = threading.Thread(target=health_worker, daemon=True)
+    health_thread.start()
+    print(f"Health heartbeat started (every 5s) on: {HEALTH_TOPIC}")
+
+    print(f"Connecting to MQTT broker at '{MQTT_BROKER}:{MQTT_PORT}'...")
     try:
         client.connect(MQTT_BROKER, MQTT_PORT, 60)
         client.loop_forever()
     except KeyboardInterrupt:
         print("\nShutting down...")
+        health_stop.set()
         try:
             beacon.stop_broadcast()
         except:
             pass
         client.disconnect()
     except Exception as e:
-        print(f"Fatal Error: {e}")
+        print(f"❌ Fatal Connection Error: {e}")
+        print(f"   Please verify that MQTT_BROKER='{MQTT_BROKER}' in .env is a reachable IP address of your Server Pi.")
+        health_stop.set()
         try:
             beacon.stop_broadcast()
         except:

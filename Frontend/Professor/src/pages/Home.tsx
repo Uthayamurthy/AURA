@@ -162,11 +162,20 @@ export default function Home() {
     };
 
     const refreshSessionStatus = async () => {
-        // Just fetch history silently to update the code
+        // Just fetch specific session details to update the code and headcount
         try {
-            // Changed to fetch specific session details including attendees
             const sessionRes = await api.get(`/professor/attendance/session/${activeSession?.id}`);
-            setActiveSession(sessionRes.data);
+            // Preserve the assignment from our local state (the API returns it but
+            // it may differ in shape from what we cached from the courses endpoint)
+            setActiveSession(prev => ({
+                ...sessionRes.data,
+                assignment: prev?.assignment ?? sessionRes.data.assignment
+            }));
+            // Sync headcount and attendance count from the DB
+            if (sessionRes.data.headcount !== undefined) {
+                setHeadcount(sessionRes.data.headcount ?? null);
+            }
+            setAttendanceCount(sessionRes.data.records?.length ?? 0);
         } catch (e) {
             console.error("Failed to refresh session", e);
             // If 404, session might be gone

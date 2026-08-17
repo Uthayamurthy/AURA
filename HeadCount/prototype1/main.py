@@ -10,7 +10,7 @@ WIFI_SSID = "AURA_SIMULATION"
 WIFI_PASS = "funky_monkey"
 MQTT_BROKER = "10.113.229.239"
 MQTT_CLIENT_ID = "esp8266_headcount"
-ROOM_ID = "LH49"  # Room where this device is installed
+ROOM_ID = "LH44"  # Room where this device is installed
 MQTT_TOPIC = "aura/rooms/" + ROOM_ID + "/headcount"
 HEALTH_TOPIC = "aura/devices/headcount/" + ROOM_ID + "/health"
 # ==========================================
