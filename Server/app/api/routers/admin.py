@@ -6,13 +6,17 @@ from typing import List, Any, Optional
 from datetime import datetime, timedelta, date, timezone
 
 from sqlalchemy import func, case, and_, desc
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from jose import jwt, JWTError
 
 from app import models, schemas
 from app.api import deps
 from app.core import security
+from app.core.config import settings
+from app.core.device_tracker import tracker as device_tracker
+from app.core.admin_ws_manager import manager as admin_ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -535,3 +539,30 @@ def export_attendance_records(
     )
     response.headers["Content-Disposition"] = f"attachment; filename=attendance_export_{current_time}.csv"
     return response
+
+# --- Device Monitoring ---
+@router.get("/devices")
+def read_devices(
+    current_admin: models.Admin = Depends(deps.get_current_active_admin),
+):
+    return device_tracker.get_all_devices()
+
+@router.websocket("/ws/devices")
+async def websocket_devices(websocket: WebSocket, token: str = Query(...)):
+    # Authenticate via JWT token
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        subject = payload.get("sub")
+        if not subject or not subject.startswith("admin:"):
+            await websocket.close(code=4001, reason="Unauthorized")
+            return
+    except Exception:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+    
+    await admin_ws_manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        admin_ws_manager.disconnect(websocket)

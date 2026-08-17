@@ -12,6 +12,7 @@ MQTT_BROKER = "10.113.229.239"
 MQTT_CLIENT_ID = "esp8266_headcount"
 ROOM_ID = "LH49"  # Room where this device is installed
 MQTT_TOPIC = "aura/rooms/" + ROOM_ID + "/headcount"
+HEALTH_TOPIC = "aura/devices/headcount/" + ROOM_ID + "/health"
 # ==========================================
 
 # Pin definitions
@@ -45,7 +46,10 @@ mqtt = connect_mqtt()
 
 # Publish the initial 0 count
 mqtt.publish(MQTT_TOPIC, str(count))
+mqtt.publish(HEALTH_TOPIC, '{"status":"online","room_id":"' + ROOM_ID + '"}')
 print("Headcount system started. Waiting for movement...")
+
+last_health = time.ticks_ms()
 
 while True:
     val_out = pin_outside.value()
@@ -105,5 +109,13 @@ while True:
                 
             while pin_outside.value() == 0 or pin_inside.value() == 0:
                 time.sleep(0.1)
+
+    # --- Health Heartbeat (every 5 seconds) ---
+    if time.ticks_diff(time.ticks_ms(), last_health) > 5000:
+        try:
+            mqtt.publish(HEALTH_TOPIC, '{"status":"online","room_id":"' + ROOM_ID + '"}')
+        except Exception:
+            pass  # Don't disrupt sensor loop for heartbeat failures
+        last_health = time.ticks_ms()
 
     time.sleep(0.05)

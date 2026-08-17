@@ -128,6 +128,19 @@ def on_message(client, userdata, msg):
         print(f"  [ERROR] Could not process command. Error: {e}")
 
 
+# --- Health Heartbeat Worker ---
+def health_worker(config, client, stop_event):
+    """Publishes a heartbeat for all configured classrooms every 5 seconds."""
+    while not stop_event.is_set():
+        for classroom_id in config['classrooms']:
+            topic = f"aura/devices/beacon/{classroom_id}/health"
+            payload = json.dumps({"status": "online", "classroom_id": classroom_id})
+            try:
+                client.publish(topic, payload, qos=0)
+            except Exception as e:
+                print(f"  [Health] Failed to publish heartbeat for '{classroom_id}': {e}")
+        stop_event.wait(5)
+
 # --- Main Execution ---
 if __name__ == "__main__":
     config = load_config()
@@ -141,11 +154,18 @@ if __name__ == "__main__":
     broker = config['mqtt_broker']
     client.connect(broker['host'], broker['port'], 60)
 
+    # Start health heartbeat thread
+    health_stop = threading.Event()
+    health_thread = threading.Thread(target=health_worker, args=(config, client, health_stop), daemon=True)
+    health_thread.start()
+    print("Health heartbeat thread started (every 5s).")
+
     try:
         print("Starting MQTT bridge controller. This will manage attendance sessions.")
         client.loop_forever()
     except KeyboardInterrupt:
         print("\nShutting down controller... stopping all active sessions.")
+        health_stop.set()
         with session_lock:
             for session in active_sessions.values():
                 session["stop_event"].set()

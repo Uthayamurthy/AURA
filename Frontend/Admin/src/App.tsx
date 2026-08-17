@@ -7,6 +7,7 @@ import Students from '@/pages/Students';
 import Professors from '@/pages/Professors';
 import Courses from '@/pages/Courses';
 import Timetable from '@/pages/Timetable';
+import Devices from '@/pages/Devices';
 import Attendance from '@/pages/Attendance';
 import DashboardLayout from '@/components/Layout/DashboardLayout';
 
@@ -72,6 +73,16 @@ function App() {
               <ProtectedRoute>
                 <DashboardLayout>
                   <Timetable />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/devices"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <Devices />
                 </DashboardLayout>
               </ProtectedRoute>
             }

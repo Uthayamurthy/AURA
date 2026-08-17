@@ -2,8 +2,19 @@ import os
 import sys
 import time
 import json
+from pathlib import Path
 import paho.mqtt.client as mqtt
 import btmgmt
+
+# Automatically load .env file if present in the same folder
+env_path = Path(__file__).resolve().parent / ".env"
+if env_path.exists():
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost") 
 MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))

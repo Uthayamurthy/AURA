@@ -11,14 +11,18 @@ logger = logging.getLogger(__name__)
 # Topic pattern to match: aura/classrooms/{classroom_id}/active_code
 TOPIC_PATTERN = "aura/classrooms/+/active_code"
 HEADCOUNT_TOPIC_PATTERN = "aura/rooms/+/headcount"
+HEALTH_TOPIC_PATTERN = "aura/devices/+/+/health"
 from app.core.ws_manager import manager as ws_manager
+from app.core.device_tracker import tracker as device_tracker
+from app.core.admin_ws_manager import manager as admin_ws_manager
 
 def on_connect(client, userdata, flags, rc, properties=None):
     if rc == 0:
         logger.info("MQTT Listener connected.")
         client.subscribe(TOPIC_PATTERN)
         client.subscribe(HEADCOUNT_TOPIC_PATTERN)
-        logger.info(f"Subscribed to {TOPIC_PATTERN} and {HEADCOUNT_TOPIC_PATTERN}")
+        client.subscribe(HEALTH_TOPIC_PATTERN)
+        logger.info(f"Subscribed to {TOPIC_PATTERN}, {HEADCOUNT_TOPIC_PATTERN}, and {HEALTH_TOPIC_PATTERN}")
     else:
         logger.error(f"Failed to connect to MQTT broker, return code {rc}")
 
@@ -27,6 +31,15 @@ def on_message(client, userdata, msg):
         payload_code = msg.payload.decode("utf-8")
         topic = msg.topic
         
+        # Check health topic
+        health_match = re.search(r"aura/devices/(.*?)/(.*?)/health", topic)
+        if health_match:
+            device_type = health_match.group(1)
+            device_id = health_match.group(2)
+            device_tracker.heartbeat(device_type, device_id)
+            admin_ws_manager.broadcast_from_thread(device_tracker.get_all_devices())
+            return
+            
         # Check headcount topic first
         headcount_match = re.search(r"aura/rooms/(.*?)/headcount", topic)
         if headcount_match:
@@ -100,6 +113,8 @@ def update_headcount(room_number: str, headcount_value: int):
     """
     Updates the headcount for the active session in a specific room.
     """
+    device_tracker.update_headcount(room_number, headcount_value)
+    admin_ws_manager.broadcast_from_thread(device_tracker.get_all_devices())
     db: Session = database.SessionLocal()
     try:
         session = db.query(models.AttendanceSession).filter(

@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Users, GraduationCap, LogOut, BookOpen, CalendarRange } from 'lucide-react';
+import { LayoutDashboard, Users, GraduationCap, LogOut, BookOpen, CalendarRange, Radio } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function Sidebar() {
@@ -17,6 +17,7 @@ export function Sidebar() {
         { name: 'Professors', path: '/professors', icon: GraduationCap },
         { name: 'Courses', path: '/courses', icon: BookOpen },
         { name: 'Timetable', path: '/timetable', icon: CalendarRange },
+        { name: 'Devices', path: '/devices', icon: Radio },
         { name: 'Attendance', path: '/attendance', icon: CalendarRange },
     ];
 
